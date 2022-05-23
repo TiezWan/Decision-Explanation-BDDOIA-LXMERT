@@ -1,0 +1,6 @@
+*.npy
+*.pth
+*.log
+traincorr.txt
+valcorr.txt
+/snap
