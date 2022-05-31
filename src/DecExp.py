@@ -112,7 +112,7 @@ class DecExp:
             self.optim = args.optimizer(self.model.parameters(), args.lr)
         
         #Question
-        self.sent=['traffic light red yellow green lane straight left right obstacle car person rider other traffic sign stop']
+        self.sent=['traffic light red yellow green lane straight left right obstacle car person rider other sign stop']
         #This is the question sent to the model
 
 
@@ -130,7 +130,7 @@ class DecExp:
             temp_loss_hist=[]
             train_loader = DataLoader(
                 self.trainset, batch_size=args.batch_size,
-                shuffle=True, num_workers=args.num_workers,
+                shuffle=False, num_workers=args.num_workers,
                 drop_last=True, pin_memory=False) #Set pin_memory to True for faster training -> Leads to obnoxious unsolvable warnings
             #train_loader is a list of lists/tensors of batch_size elements (see what __getitem__ returns in DecExp_data): 
             #[[2,56,84,10,...], [aded54c2-98d4e31_2, jde9d9e7d-dgd232df_3, ...], [100, 100, ...],
@@ -149,7 +149,7 @@ class DecExp:
                 self.model.train() #Tells the model that we are in train mode
                 self.optim.zero_grad() #Reset all gradients to 0
                 feats, boxes, label = feats.cuda(), boxes.cuda(), label.cuda() #label is the logits after sigmoid
-                logit = self.model(feats, boxes, self.sent) #Does the model return logits or labels ? -> logits
+                logit = self.model(img_id, feats, boxes, self.sent) #Does the model return logits or labels ? -> logits
 
                 assert logit.size(dim=1) == label.size(dim=1) == ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
                 loss = self.bce_loss(logit, label)
@@ -232,7 +232,7 @@ class DecExp:
             torch.cuda.empty_cache()
             with torch.no_grad(): #Making sure we don't do any training here
                 feats, boxes = feats.cuda(), boxes.cuda()
-                logit = self.model(feats, boxes, self.sent)
+                logit = self.model(img_id, feats, boxes, self.sent)
                 label=nn.Sigmoid()(logit)
                 for index, l in zip(indx, label.cpu().numpy()):
                     idx2ansval[index] = np.array(l)
@@ -255,7 +255,7 @@ class DecExp:
         nbequal=25 #number of bits within each prediction that have to be equal to the label in order to classify as correct.
         eval_loader = DataLoader(
             dset, batch_size=args.batch_size,
-            shuffle=True, num_workers=args.num_workers,
+            shuffle=False, num_workers=args.num_workers,
             drop_last=True, pin_memory=False)
         print("Dataloader loaded")
         idx, temp=self.predict(eval_loader, eval_batches, dump)
@@ -338,19 +338,19 @@ if __name__ == "__main__":
     args.valid='val'
     args.test=None
     args.batch_size=16
-    args.epochs=10
-    args.output='./snap/train_full_12h_1_1_1'
-    args.lr=5e-5
-    #args.load='./snap/train_fulldata_1/epoch_18' #Load decexp model weights. Note: It is different from loading LXMERT pre-trained weights.
+    args.epochs=50
+    args.output='./snap/train_1000_12h_3_3_3'
+    args.lr=1e-4
+    args.load='./snap/train_1000_12h_3_3_3/epoch_26' #Load decexp model weights. Note: It is different from loading LXMERT pre-trained weights.
     #args.load_lxmert='./snap/model'
-    args.fromScratch=True
+    args.save_heatmap=True
     args.tiny=True
     args.num_workers=4
-    args.dotrain=True #True: trains the model. False:  Performs evaluation only
+    args.dotrain=False #True: trains the model. False: Performs evaluation only
     args.heads=12
-    args.llayers=1
-    args.xlayers=1
-    args.rlayers=1
+    args.llayers=3
+    args.xlayers=3
+    args.rlayers=3
     decexp = DecExp()
 
     if args.test!=True:

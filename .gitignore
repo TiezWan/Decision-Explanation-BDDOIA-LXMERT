@@ -3,4 +3,4 @@
 *.log
 traincorr.txt
 valcorr.txt
-/snap
+/snap/train_full_12h_9_5_5/params_used

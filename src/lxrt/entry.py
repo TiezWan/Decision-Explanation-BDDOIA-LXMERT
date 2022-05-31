@@ -22,7 +22,7 @@ import pdb
 import torch.nn as nn
 
 from lxrt.tokenization import BertTokenizer
-from lxrt.modeling import LXRTFeatureExtraction as VisualBertForLXRFeature, VISUAL_CONFIG
+from lxrt.modeling import LXRTFeatureExtraction as VisualBertForLXRFeature, VISUAL_CONFIG, BertConfig
 
 
 class InputFeatures(object):
@@ -40,6 +40,7 @@ def convert_sents_to_features(sents, max_seq_length, tokenizer):
     features = []
     for (i, sent) in enumerate(sents):
         tokens_a = tokenizer.tokenize(sent.strip())
+        #pdb.set_trace()
 
         # Account for [CLS] and [SEP] with "- 2"
         if len(tokens_a) > max_seq_length - 2:
@@ -50,6 +51,7 @@ def convert_sents_to_features(sents, max_seq_length, tokenizer):
         segment_ids = [0] * len(tokens)
 
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        #pdb.set_trace()
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
@@ -97,8 +99,6 @@ class LXRTEncoder(nn.Module):
             mode=mode
         )
 
-        #self.model = VisualBertForLXRFeature(args, "bert-base-uncased", mode=mode)
-
         if args.from_scratch:
             print("initializing all the weights")
             self.model.apply(self.model.init_bert_weights)
@@ -110,7 +110,7 @@ class LXRTEncoder(nn.Module):
     def dim(self):
         return 64*self.nbheads
 
-    def forward(self, sents, feats, visual_attention_mask=None):
+    def forward(self, imgid, sents, feats, visual_attention_mask=None):
         train_features = convert_sents_to_features(
             sents, self.max_seq_length, self.tokenizer)
 
@@ -118,7 +118,7 @@ class LXRTEncoder(nn.Module):
         input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long).cuda()
         segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long).cuda()
 
-        output = self.model(input_ids, segment_ids, input_mask,
+        output = self.model(imgid, input_ids, segment_ids, input_mask,
                             visual_feats=feats,
                             visual_attention_mask=visual_attention_mask)
         return output

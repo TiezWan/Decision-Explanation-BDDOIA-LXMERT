@@ -2,7 +2,7 @@ import torch.nn as nn
 import sys
 
 #QUERY_LENGTH=105 #number of characters
-QUERY_LENGTH=17 #number of words in the input query
+QUERY_LENGTH=16 #number of words in the input query
 ANSWER_LENGTH=25 #Number of output classes
 
 from param import args
@@ -15,7 +15,7 @@ class DecExpModel(nn.Module):
         super().__init__()
         
         # Build LXRT encoder
-        self.lxrt_encoder = LXRTEncoder(args, max_seq_length=QUERY_LENGTH)
+        self.lxrt_encoder = LXRTEncoder(args, max_seq_length=QUERY_LENGTH+2)
         hid_dim = self.lxrt_encoder.dim
         
         # VQA Answer heads
@@ -29,7 +29,7 @@ class DecExpModel(nn.Module):
         )
         self.logit_fc.apply(self.lxrt_encoder.model.init_bert_weights)
         
-    def forward(self, feat, pos, sent):
+    def forward(self, imgid, feat, pos, sent):
         """
         b -- batch_size, o -- object_number, f -- visual_feature_size
 
@@ -39,7 +39,7 @@ class DecExpModel(nn.Module):
         :param leng: (b,) Type -- int numpy array
         :return: (b, num_answer) The logit of each answers.
         """
-        x = self.lxrt_encoder(sent, (feat, pos))
+        x = self.lxrt_encoder(imgid, sent, (feat, pos))
         logit = self.logit_fc(x) #Does this return logits or label(logits followed by sigmoid) ? If latter -> Change loss in DecExp.py to BCELoss
 
         return logit

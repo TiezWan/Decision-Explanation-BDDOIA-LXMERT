@@ -57,8 +57,8 @@ class DecExpDataset(Dataset):
                 for j in range(5):
                     data.append((temp[i][0]+"_"+str(j), temp[i][1]))
 
-        if args.dotrain==True: #Evaluation calls the Dataset class for each model -> time-consuming. Only shuffle in the DataLoader in that case
-            random.Random(RANDOM_SEED).shuffle(data)
+        #if args.dotrain==True: #Evaluation calls the Dataset class for each model -> time-consuming. Only shuffle in the DataLoader in that case
+            #random.Random(RANDOM_SEED).shuffle(data)
 
         self.idx2label={}
         if args.img_num==None:
