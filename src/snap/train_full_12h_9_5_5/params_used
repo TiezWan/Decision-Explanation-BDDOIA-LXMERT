@@ -1,0 +1,10 @@
+lr=5e-5
+sent=['traffic light red yellow green lane straight left right obstacle car person rider other traffic sign stop']
+LXRT encoder with 9 L-layers, 5 X-layers, 5 R_layers
+Train set : 39723 samples
+Val set : 5583 samples
+epochs : 18
+batch_size : 16
+loaded the pre-trained model on first epoch located in ./snap/model_LXRT.pth
+optimizer : 'bert'
+dropout: 0.1

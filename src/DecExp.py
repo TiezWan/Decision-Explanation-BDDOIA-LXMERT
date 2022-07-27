@@ -16,8 +16,12 @@ from DecExp_model import DecExpModel, ANSWER_LENGTH
 from DecExp_data import DecExpDataset
 from lxrt.optimization import BertAdam
 
+
+
+
 import warnings
 warnings.filterwarnings("ignore") #Attempts to ignore deprecated warnings from Pytorch, as those haven't been fixed in this torch version
+
 
 class DecExp:
     """Imports the dataset(s) and builds the dataloader and model. Performs training and evaluation with parameters defined in an
@@ -95,6 +99,29 @@ class DecExp:
         if args.multiGPU:
             self.model.lxrt_encoder.multi_gpu()
 
+        #Class weighting
+        #print("Building class weights")
+        #temp_loader = DataLoader(
+        #        self.trainset, batch_size=args.batch_size,
+        #        shuffle=True, num_workers=args.num_workers,
+        #        drop_last=False, pin_memory=False)
+        #nsamples1=np.zeros(25)
+        #temp_barloader=tqdm(temp_loader, total=int(args.img_num/args.batch_size))
+        #for batchdata in temp_barloader:
+        #    temp_labels = batchdata[5]
+        #    for sample in temp_labels:
+        #        for i in range(25):
+        #            if sample[i]==1:
+        #                nsamples1[i]+=1
+        #del temp_loader, temp_labels #Freeing up memory
+        #print(nsamples1)
+        #clweight= torch.from_numpy((self.trainset.__len__()-nsamples1) / nsamples1)
+        #for i in range(25): #Preventing infinite values
+        #    if clweight[i]>10000:
+        #        clweight[i]=10000
+        #clweight=clweight.cuda()
+        #print(clweight)
+
         # Loss and Optimizer
         print("batch_size:", args.batch_size)
         self.bce_loss = nn.BCEWithLogitsLoss() #Loss for multi-label multi-class classification. Choice: mean of the outputs
@@ -120,17 +147,20 @@ class DecExp:
         print("Starting training")
 
         best_valid = 0.
+        best_bitwise_valid=0.
         self.valacc_hist={}
         self.loss_hist={}
         self.val_loss_hist={}
+        self.bitwise_valacc_hist={}
 
         for epoch in range(1,args.epochs+1):
             print("epoch ", epoch, "/", args.epochs, "\n")
             idx2ans = {}
             temp_loss_hist=[]
+            
             train_loader = DataLoader(
                 self.trainset, batch_size=args.batch_size,
-                shuffle=False, num_workers=args.num_workers,
+                shuffle=True, num_workers=args.num_workers,
                 drop_last=True, pin_memory=False) #Set pin_memory to True for faster training -> Leads to obnoxious unsolvable warnings
             #train_loader is a list of lists/tensors of batch_size elements (see what __getitem__ returns in DecExp_data): 
             #[[2,56,84,10,...], [aded54c2-98d4e31_2, jde9d9e7d-dgd232df_3, ...], [100, 100, ...],
@@ -144,7 +174,7 @@ class DecExp:
                 #print("Training batch ",trainbatch, "/", self.batches_per_epoch)
                 idx, img_id, obj_num, feats, boxes, label = batchdata
                 idx=idx.tolist()
-                #____________________________________
+                #____________________________________ 
                 #For one batch
                 self.model.train() #Tells the model that we are in train mode
                 self.optim.zero_grad() #Reset all gradients to 0
@@ -152,7 +182,9 @@ class DecExp:
                 logit = self.model(img_id, feats, boxes, self.sent) #Does the model return logits or labels ? -> logits
 
                 assert logit.size(dim=1) == label.size(dim=1) == ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
-                loss = self.bce_loss(logit, label)
+                l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
+                loss = self.bce_loss(logit, label) + args.l2reg * l2_norm
+                
                 #print("loss :", loss.item(), "\n")
                 #loss = loss * logit.size(1) #Removing the mean reduction of bce_loss to get the sum of all components
                                             #Uncomment if the loss is chosen without specifying the reduction (defaults to mean)
@@ -180,18 +212,21 @@ class DecExp:
                 f.flush()
             decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
 
-            train_accuracy=self.evaluate(self.trainset)[0] #Computes training accuracy
-            log_str="\n Training accuracy --- \n Epoch {0}: {1} % \n".format(epoch, train_accuracy*100.)
+            train_accuracy, bitwise_train_accuracy=self.evaluate(self.trainset)[0:2] #Computes training accuracy
+            log_str="\n Training accuracy --- \n Label-wise: Epoch {0}: {1} % \n Bitwise: Epoch {0}: {2} %\n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100.)
 
             if args.valid != "" and args.valid != None:
-                val_accuracy, val_loss=self.evaluate(self.validset) #Compute validation accuracy
+                val_accuracy, bitwise_val_accuracy, val_loss=self.evaluate(self.validset) #Compute validation accuracy
                 self.valacc_hist[epoch]=val_accuracy #Save the validation accuracy from the current epoch for later plotting
                 self.val_loss_hist[epoch]=val_loss
+                self.bitwise_valacc_hist[epoch]=bitwise_val_accuracy
                 if val_accuracy > best_valid: #If the validation accuracy from this epoch is better than the current best from a previous epoch, save it
                     best_valid = val_accuracy
                     self.save("BEST_val")
+                if bitwise_val_accuracy > best_bitwise_valid:
+                    best_bitwise_valid=bitwise_val_accuracy
 
-                log_str += "Validation accuracy --- \n Epoch {0}: {1} %\n Epoch {0}: Best {2} %\n".format(epoch, val_accuracy*100., best_valid*100.)
+                log_str += "Validation accuracy --- \n Label-wise: Epoch {0}: {1} %\n Epoch {0}: Best {2} %\n Bitwise: Epoch {0}: {3} %\n Epoch {0} Best Bitwise {4} %\n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100.)
                 
                 with open(args.output + "/valhist.log", 'a') as f:
                     f.write(log_str)
@@ -255,7 +290,7 @@ class DecExp:
         nbequal=25 #number of bits within each prediction that have to be equal to the label in order to classify as correct.
         eval_loader = DataLoader(
             dset, batch_size=args.batch_size,
-            shuffle=False, num_workers=args.num_workers,
+            shuffle=True, num_workers=args.num_workers,
             drop_last=True, pin_memory=False)
         print("Dataloader loaded")
         idx, temp=self.predict(eval_loader, eval_batches, dump)
@@ -268,14 +303,14 @@ class DecExp:
 
         del temp
         trace=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] #Count position-wise errors over the dataset
+        fulllabel_score=0
+        bitwise_score=0
         for indx in eval_answers.keys():
             temp=0
             
             for bit in range(25):
-                #if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
-                    #score+=1
-
                 if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
+                    bitwise_score+=1
                     temp+=1
                 else:
                     trace[bit]+=1 #Keeps track of bits that are incorrectly predicted
@@ -287,13 +322,14 @@ class DecExp:
 
             if temp>=nbequal: #If a minimum number of bits correspond between prediction and annotation, score +=1
                                 #NOT THE SAME AS ADDING 1 TO SCORE IF A BIT CORRESPONDS (i.e computing the % of correct bits overall)
-                score+=1
+                fulllabel_score+=1
 
         print(trace)
         listlosses=list(self.val_loss.values())
         avg_val_loss=sum(listlosses)/len(listlosses)
-        acc=score/len(eval_answers)
-        return acc, avg_val_loss
+        label_acc=fulllabel_score/len(eval_answers)
+        bitwise_acc=bitwise_score/(len(eval_answers)*25)
+        return label_acc, bitwise_acc, avg_val_loss
 
 
     def dump_result(self, imgid2ans: dict, path):
@@ -332,48 +368,66 @@ class DecExp:
         print("Weights loaded")
 
 
+def get_n_params(model):
+    pp=0
+    for p in list(model.parameters()):
+        nn=1
+        for s in list(p.size()):
+            nn = nn*s
+        pp += nn
+    return pp
+
 if __name__ == "__main__":
     # Build Class
     args.train='train'
     args.valid='val'
     args.test=None
-    args.batch_size=16
+    args.batch_size=8
     args.epochs=50
-    args.output='./snap/train_1000_12h_3_3_3'
-    args.lr=1e-4
-    args.load='./snap/train_1000_12h_3_3_3/epoch_26' #Load decexp model weights. Note: It is different from loading LXMERT pre-trained weights.
+    args.output='./snap/no_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8'
+    
+    args.lr=5e-5
+    #args.load='./snap/train_full_3h_3_3_3_x/epoch_1' #Load decexp model weights. Note: It is different from loading LXMERT pre-trained weights.
     #args.load_lxmert='./snap/model'
-    args.save_heatmap=True
+    args.save_heatmap=False
     args.tiny=True
     args.num_workers=4
-    args.dotrain=False #True: trains the model. False: Performs evaluation only
+    args.fromScratch=False
+    args.dotrain=True #True: trains the model. False: Performs evaluation only
     args.heads=12
     args.llayers=3
     args.xlayers=3
     args.rlayers=3
+    args.l2reg=0.0003
     decexp = DecExp()
 
     if args.test!=True:
         if args.dotrain==False:
             #Perform evaluation only
             print("Performing evaluation only")
-            train_accuracy, avg_train_loss=decexp.evaluate(decexp.trainset)
-            val_accuracy, avg_val_loss=decexp.evaluate(decexp.validset)
-            print("Train accuracy", train_accuracy*100., "Avg loss: ", avg_train_loss)
-            print("Val accuracy", val_accuracy*100., "Avg loss: ", avg_val_loss)
+            #train_accuracy, avg_train_loss=decexp.evaluate(decexp.trainset)
+            for i in range(1,51):
+                with torch.no_grad():
+                    print("loading epoch", i)
+                    decexp.load('./snap/train_full_3h_3_3_3_x/epoch_'+str(i))
+                val_accuracy, bitwise_val_accuracy, avg_val_loss=decexp.evaluate(decexp.validset)
+                #print("Train accuracy", train_accuracy*100., "Avg loss: ", avg_train_loss)
+                print("Val accuracy", val_accuracy*100., "Avg loss: ", avg_val_loss)
 
-            with open(args.output + "/acc_loss.log", 'a') as f:
-                    f.write("\nModel: ")
-                    f.write(args.load)
-                    f.write("\nTrain accuracy: ")
-                    f.write(str(train_accuracy*100.))
-                    f.write(" Avg loss: ")
-                    f.write(str(avg_train_loss))
-                    f.write("\nVal accuracy: ")
-                    f.write(str(val_accuracy*100.))
-                    f.write(" Avg loss: ")
-                    f.write(str(avg_val_loss))
-                    f.flush()
+                with open(args.output + "/eval_acc_loss.log", 'a') as f:
+                        f.write("\nModel: ")
+                        f.write(args.load)
+                        #f.write("\nTrain accuracy: ")
+                        #f.write(str(train_accuracy*100.))
+                        #f.write(" Avg loss: ")
+                        #f.write(str(avg_train_loss))
+                        f.write("\nVal accuracy: ")
+                        f.write(str(val_accuracy*100.))
+                        f.write("\nBitwise Val accuracy: ")
+                        f.write(str(bitwise_val_accuracy*100.))
+                        f.write(" Avg loss: ")
+                        f.write(str(avg_val_loss))
+                        f.flush()
 
         else: #Call the training function
             print("Splits in data: \n", decexp.trainset.split)

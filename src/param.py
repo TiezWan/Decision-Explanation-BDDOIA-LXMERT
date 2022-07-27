@@ -42,6 +42,7 @@ def parse_args():
     parser.add_argument('--batchSize', dest='batch_size', type=int, default=256)
     parser.add_argument('--optim', default='bert')
     parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--l2reg', type=float, default=1e-4)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--train_epochs', type=int, default=5)
     parser.add_argument('--dropout', type=float, default=0.1)

@@ -141,7 +141,7 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     scores_copy.cpu()
     
     for img in range(batch_size): #For each image in the batch
-        path="./snap/heatmaps/12h_1000_3_3_3/"+str(imgids[img])[:-2]+'/'
+        path="./snap/heatmaps/12h_3_3_3/"+str(imgids[img])[:-2]+'/'
         if not os.path.isdir(path): #check if a folder for the original video name exists
             os.makedirs(path) #If not we initialize everything
             for sample in range(5): #Create folders for each one of the samples derived from the video
@@ -159,14 +159,14 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     if stage=='attsc':
         if mode=="lang":
             for img in range(batch_size): #For each image in the batch
-                path="./snap/heatmaps/12h_1000_3_3_3/"+str(imgids[img])[:-2]+'/'
+                path="./snap/heatmaps/12h_3_3_3/"+str(imgids[img])[:-2]+'/'
                 for head in range(nbheads):
                     np.save(path+str(imgids[img])+'/attention_scores/lang/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_attsc_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
     
         elif mode=="visn":
             for img in range(batch_size):
-                path="./snap/heatmaps/12h_1000_3_3_3/"+str(imgids[img])[:-2]+'/'
+                path="./snap/heatmaps/12h_3_3_3/"+str(imgids[img])[:-2]+'/'
                 for head in range(nbheads):
                     np.save(path+str(imgids[img])+'/attention_scores/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_attsc_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
@@ -175,14 +175,14 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     elif stage=='ctxlay':
         if mode=='lang':
             for img in range(batch_size):
-                path="./snap/heatmaps/12h_1000_3_3_3/"+str(imgids[img])[:-2]+'/'
+                path="./snap/heatmaps/12h_3_3_3/"+str(imgids[img])[:-2]+'/'
                 for head in range(nbheads):
                     np.save(path+str(imgids[img])+'/context_layer/lang/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_ctxlay_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
     
         elif mode=='visn':
             for img in range(batch_size):
-                path="./snap/heatmaps/12h_1000_3_3_3/"+str(imgids[img])[:-2]+'/'
+                path="./snap/heatmaps/12h_3_3_3/"+str(imgids[img])[:-2]+'/'
                 for head in range(nbheads):
                     np.save(path+str(imgids[img])+'/context_layer/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_ctxlay_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
