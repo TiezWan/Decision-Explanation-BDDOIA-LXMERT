@@ -213,7 +213,7 @@ class DecExp:
             decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
 
             train_accuracy, bitwise_train_accuracy=self.evaluate(self.trainset)[0:2] #Computes training accuracy
-            log_str="\n Training accuracy --- \n Label-wise: Epoch {0}: {1} % \n Bit-wise: Epoch {0}: {2} %\n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100.)
+            log_str="\nTraining accuracy --- \n  Label-wise: Epoch {0}: {1} % \n  Bit-wise: Epoch {0}: {2} %\n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100.)
 
             if args.valid != "" and args.valid != None:
                 val_accuracy, bitwise_val_accuracy, val_loss=self.evaluate(self.validset) #Compute validation accuracy
@@ -226,7 +226,7 @@ class DecExp:
                 if bitwise_val_accuracy > best_bitwise_valid:
                     best_bitwise_valid=bitwise_val_accuracy
 
-                log_str += "Validation accuracy --- \n Label-wise: \nEpoch {0}: {1} %\n Epoch {0}: Best {2} %\n Bit-wise: \nEpoch {0}: {3} %\n Epoch {0} Best Bit-wise {4} %\n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100.)
+                log_str += "Validation accuracy --- \n  Label-wise: \n    Epoch {0}: {1} %\n    Epoch {0}: Best {2} %\n  Bit-wise: \n    Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise {4} %\n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100.)
                 
                 with open(args.output + "/valhist.log", 'a') as f:
                     f.write(log_str)
