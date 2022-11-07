@@ -1,32 +1,35 @@
 # LXMERT based ISVQA in autonomous driving dataset (Nuscenes)
-This repository is to implement lxmert model based VQA in autonomous driving dataset(Nuscenes) 
+This repository presents an LXMERT-based model performing VQA-based scene understanding for autonomous driving (dataset: Berkeley DeepDrive - eXplanation (BDD-X)).
+
+Instructions on how to use the code, and train/test models are found at the bottom of this file.
 
 ## Dataset introduction
-[ToDo] blabla
 ```sh
-|-- extracted_features
-|   |-- train
-|   |-- test
-|-- mini
-|   |-- maps
-|   |   |-- 36092f0b03a857c6a3403e25b4b7aab3.png
-|   |-- samples
-|   |   |-- CAM_BACK
-|   |   `-- ....
-|   `-- v1.0-mini
-|       |-- attribute.json
-|       `-- ...
-|-- part01
-|   `-- samples
-|       |-- CAM_BACK
-|       `-- ...
-|-- part02
-|   `-- samples
-|       |-- CAM_BACK
+|-- input
+|   |-- bdd100k
+|       |[ToDo] Sort video data into the proper folders
+|       |-- trainclips_downsampled_Xfpv
+|       |-- valclips_downsampled_Xfpv
+|       |-- testclips_downsampled_Xfpv
+|       |-- feature_output
+|           |-- trainclips_downsampled_Xfpv
+|           |-- valclips_downsampled_Xfpv
+|-- src
+|    |-- lxrt (deprecated)
+|    |-- mmf
+|    |-- pretrain (duplicate)
+|    |-- vqa-maskrcnn-benchmark
+|-- src_DecExp
+|    |-- lxrt
+|    |-- pretrain
+|    |--snap
+|    |-- DecExp.py
+|    |-- ...
 ```
 
 ## File structure
 ```sh
+[ToDo] This is not correct
 -- input
   -- ISVQA
     -- NuScenes
@@ -52,6 +55,8 @@ This repository is to implement lxmert model based VQA in autonomous driving dat
 
 ## Preparation
 ### Prerequisite
+Make sure to create a new conda environment before proceeding, do not perform the following operations on the base environment as this sometimes leads to troubles.
+
 conda install -c anaconda boto3  # TODO
 - MMF install [Official instruction](https://mmf.sh/docs/), download the mmf repo under '/src'.
 ```
@@ -88,31 +93,35 @@ wget https://nlp.cs.unc.edu/data/model_LXRT.pth -P snap/pretrained
 
 
 # Question ID and score generation
-For original question id is not unique for each question, we need to generate new question id to identify each question.
-Besides, we also need to generate answer score for each answer.
+The question being sent is currentoy being coded in DecExp.py, under the "self.sents" variable. One can either send a question to the model or let the model figure out a query question (a collection of words) from the objects detected in the data.
 
-You need to preprocess the original annotation files on your own following below steps.
-1. Download the original annotation files from [ISVQA](https://github.com/ankanbansal/ISVQA-Dataset/tree/master/nuscenes)
-2. Generate new annotation file and answer file via *add_id_and_score.py* under *input/others*. Before running *add_id_and_score.py*, don't forget to change file path to yours.
+The annotation file for the BDD-X videos is accessible under the input folder of this repository.
 
 # Feature extraction
+Make sure to modify the output path in feature_extraction_DecExp.py and run the following line to extract features from video data.
 ```sh
-python feature_extraction.py
+python feature_extraction_DecExp.py
 ```
 
-# Training and Test
-You need to split the original trainpart features into training and test part features, so you can generate two new annotation files as indicators, including train part and test part, via *spiltjson.py* under *input/others*. 
-When two new .json file are ready, run *ISVQA_main.py* to train and test the whole model.
+# Training and Testing
+The video data can be obtained through the dedicated BDD web page. All the splits in the BDD-X are sub-splits of the train split in the BDD data. This means that here is no need to download the test and val split from the BDD website. The downloaded videos then need to be split into clips of varying lengths.
+
+To run the code, make sure that your previously setup conda env is running and selected.
+
+Training or testing is decided in the Decexp.py file by modifying the args.train and args.valid variables. 
+
+To perform training, input args.train='train'. Optionally, by setting args.valid='val', one can get an evaluation on the val split for each epoch (concurrently with the training)
+
+To perform testing only, set args.train=None and args.valid='test' (though it can be done on any split)
+
+[ToDo] Add test split, modify code to use args.test
+
+Modify other parameters such as the number of training samples per epoch, the learning rate, etc... and run the following command to start training/testing:
+
 ```sh
-python ISVQA_main.py
+python DecExp.py
 ```
 
 # Result
-After 30 Epochs, we have the accuracy on training set as xxx and on test set as xxx.
-
-*figure1*
-
-*figure2*
-
-*figure3*
+The results are stored in the src_DecExp/snap/$model_name folder. In the current version, saving the model's weights at each epoch has been disabled to prevent excessive and unnecessary memory usage. One can simply re-enable it by uncommenting the corresponding line in DecExp.py
 
