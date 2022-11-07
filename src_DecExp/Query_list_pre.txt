@@ -1,0 +1,54 @@
+traffic light
+tail light
+light
+stop sign
+sign
+traffic cone
+horse
+horse rider
+rider
+person
+human
+people
+man
+woman
+boy
+girl
+child
+car
+bus
+truck
+train
+bicycle
+bike
+ambulance
+firetruck
+scooter
+trunk
+headlight
+cat
+dog
+sky
+station
+sign
+grass
+windshield
+license plate
+tree
+wheel
+road
+street
+lane
+sidewalk
+crosswalk
+tracks
+house
+red
+yellow
+green
+window
+forward
+stop
+left
+right
+obstacle

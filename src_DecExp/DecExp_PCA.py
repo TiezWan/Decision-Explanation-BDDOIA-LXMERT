@@ -1,6 +1,7 @@
 import os
 import collections
 import sys
+import shutil
 
 import torch
 import torch.nn as nn
@@ -15,32 +16,30 @@ from param import args
 from pretrain.qa_answer_table import load_lxmert_qa
 from DecExp_data import DecExpDataset
 
-trainset = DecExpDataset('train')
+os.chdir("/root/Documents/ISVQA-main/src_DecExp/")
+trainimgs=os.listdir("../input/lastframe/data/train")
+testimgs=os.listdir("../input/lastframe/data/test")
+valimgs=os.listdir("../input/lastframe/data/val")
+lastframeimgs=trainimgs+testimgs+valimgs
 
-def incremental_PCA(nr_of_samples,nr_components):
+bdd100imgs=os.listdir("../input/bdd100k/images/100k/train")+os.listdir("../input/bdd100k/images/100k/test")+os.listdir("../input/bdd100k/images/100k/val")
+#for i in bdd100imgs:
+#    if i not in lastframeimgs:
+#        try:
+#            shutil.copy("../input/bdd100k/images/100k/train/"+i, "../input/bdd100k_cleaned/images/100k/train/"+i)
+#        except:
+#            try:
+#                shutil.copy("../input/bdd100k/images/100k/test/"+i, "../input/bdd100k_cleaned/images/100k/test/"+i)
+#            except:
+#                try:
+#                    shutil.copy("../input/bdd100k/images/100k/val/"+i, "../input/bdd100k_cleaned/images/100k/val/"+i)
+#                except:
+#                    print("error")
+                    
+bdd100cleanimgs=os.listdir("../input/bdd100k_cleaned/images/100k/train")+os.listdir("../input/bdd100k_cleaned/images/100k/test")+os.listdir("../input/bdd100k_cleaned/images/100k/val")
 
-        train_loader = DataLoader(
-                trainset, batch_size=3000,
-                shuffle=True, num_workers=args.num_workers,
-                drop_last=False, pin_memory=False)
-
-        pca_res=np.zeros((1,nr_components))
-        ipca = IncrementalPCA(n_components=nr_components)
-        for x, y in tqdm(loader):
-            #Flatten into 1D vector of features for PCA
-            x=x.flatten().view(nr_of_samples,1572864).numpy()
-            ipca.partial_fit(x)
-        loader=self.create_loader(nr_of_samples)
-        for x, y in tqdm(loader):
-            x=x.flatten().view(nr_of_samples,1572864).numpy()
-            tr=ipca.transform(x)
-            pca_res=np.vstack((pca_res,tr))
-        pca_array=np.array(pca_res)
-        components=ipca.components_
-        return pca_array[1:,:],components
-
-
-
-
-
-barloader=tqdm(train_loader, total=self.batches_per_epoch)
+verif=[]
+for i in bdd100imgs:
+    if i in lastframeimgs:
+        verif.append(i)
+print(len(verif))

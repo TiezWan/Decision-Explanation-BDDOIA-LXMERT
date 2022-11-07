@@ -32,6 +32,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, SmoothL1Loss
 import numpy as np
 import pdb
+from DecExp_model import QUERY_LENGTH
 
 from .file_utils import cached_path
 
@@ -141,50 +142,45 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     scores_copy.cpu()
     
     for img in range(batch_size): #For each image in the batch
-        path="./snap/heatmaps/Temp_ModifyName/"+str(imgids[img])[:-2]+'/'
+        path="./snap/lastframe/heatmaps/Temp_ModifyName/"+str(imgids[img])+'/'
         if not os.path.isdir(path): #check if a folder for the original video name exists
             os.makedirs(path) #If not we initialize everything
-            for sample in range(5): #Create folders for each one of the samples derived from the video
-                os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/attention_scores/lang/')
-                os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/attention_scores/visn/')
-                os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/context_layer/lang/')
-                os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/context_layer/visn/')
-                for layer in range(xlayers):
-                    os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/attention_scores/lang/layer_'+str(layer+1))
-                    os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/attention_scores/visn/layer_'+str(layer+1))
-                    os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/context_layer/lang/layer_'+str(layer+1))
-                    os.makedirs(path+str(imgids[img])[:-2]+'_'+str(sample)+'/context_layer/visn/layer_'+str(layer+1))
-
-
+            for layer in range(xlayers):
+                os.makedirs(path+'attention_scores/lang/layer_'+str(layer+1))
+                os.makedirs(path+'attention_scores/visn/layer_'+str(layer+1))
+                os.makedirs(path+'context_layer/lang/layer_'+str(layer+1))
+                os.makedirs(path+'context_layer/visn/layer_'+str(layer+1))
+    
     if stage=='attsc':
         if mode=="lang":
             for img in range(batch_size): #For each image in the batch
-                path="./snap/heatmaps/Temp_ModifyName/"+str(imgids[img])[:-2]+'/'
+                path="./snap/lastframe/heatmaps/Temp_ModifyName/"+str(imgids[img])+"/"
                 for head in range(nbheads):
-                    np.save(path+str(imgids[img])+'/attention_scores/lang/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
+                    np.save(path+"attention_scores/lang/layer_"+str(layer_count)+"/"+str(imgids[img])+ \
                     "_attsc_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-    
+                    #np.save("test.npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
         elif mode=="visn":
             for img in range(batch_size):
-                path="./snap/heatmaps/Temp_ModifyName/"+str(imgids[img])[:-2]+'/'
+                path="./snap/lastframe/heatmaps/Temp_ModifyName/"+str(imgids[img])+"/"
                 for head in range(nbheads):
-                    np.save(path+str(imgids[img])+'/attention_scores/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
+                    np.save(path+'attention_scores/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_attsc_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
     
 
     elif stage=='ctxlay':
         if mode=='lang':
             for img in range(batch_size):
-                path="./snap/heatmaps/Temp_ModifyName/"+str(imgids[img])[:-2]+'/'
+                path="./snap/lastframe/heatmaps/Temp_ModifyName/"+str(imgids[img])+'/'
                 for head in range(nbheads):
-                    np.save(path+str(imgids[img])+'/context_layer/lang/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
+                    
+                    np.save(path+'context_layer/lang/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_ctxlay_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
     
         elif mode=='visn':
             for img in range(batch_size):
-                path="./snap/heatmaps/Temp_ModifyName/"+str(imgids[img])[:-2]+'/'
+                path="./snap/lastframe/heatmaps/Temp_ModifyName/"+str(imgids[img])+'/'
                 for head in range(nbheads):
-                    np.save(path+str(imgids[img])+'/context_layer/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
+                    np.save(path+'context_layer/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_ctxlay_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
     
 
@@ -351,7 +347,7 @@ class BertEmbeddings(nn.Module):
         return embeddings
 
 
-class BertAttention(nn.Module): #Todo base layer of the attention mechanism
+class BertAttention(nn.Module): 
     def __init__(self, args, config, ctx_dim=None):
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0:
@@ -368,69 +364,150 @@ class BertAttention(nn.Module): #Todo base layer of the attention mechanism
         # visual_dim = 2048
         if ctx_dim is None:
             ctx_dim =config.hidden_size
+        
+        self.tempquery = nn.Linear(config.hidden_size, self.all_head_size)
+        self.tempkey = nn.Linear(ctx_dim, self.all_head_size)
+        self.tempvalue = nn.Linear(ctx_dim, self.all_head_size)
+        
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.key = nn.Linear(ctx_dim, self.all_head_size)
         self.value = nn.Linear(ctx_dim, self.all_head_size)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
-    def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(*new_x_shape)
-        return x.permute(0, 2, 1, 3)
 
+    def transpose_for_scores(self, x, temporalflag=False):
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        #new_x_shape = [batchsize, num_frames, 100, 12, 64]
+        x = x.view(*new_x_shape)
+        if len(x.size())==4:
+            return x.permute(0, 2, 1, 3)
+        elif len(x.size())==5:
+            if temporalflag:
+                return x.permute(0, 3, 2, 1, 4)
+            else:
+                return x.permute(0, 1, 3, 2, 4)
+            
+            
     def forward(self, imgid, layer_count, hidden_states, context, attention_mask=None, flagcross=0):
-        #print("\n--hidden_states", hidden_states)
-        mixed_query_layer = self.query(hidden_states)
-        #print("\n--mixed_query size ", mixed_query_layer.size())
-        mixed_key_layer = self.key(context) #
-        mixed_value_layer = self.value(context)
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-        #print("\n--query layer size ", query_layer.size())
-        key_layer = self.transpose_for_scores(mixed_key_layer) 
-        value_layer = self.transpose_for_scores(mixed_value_layer)
+        #mixed layers have size [batchsize, 100, 768]
+        if len(hidden_states.size())==3:
+            #print("\n--hidden_states", hidden_states)
+            mixed_query_layer = self.query(hidden_states)
+            #print("\n--mixed_query size ", mixed_query_layer.size())
+            mixed_key_layer = self.key(context) #
+            mixed_value_layer = self.value(context)
+            
+            query_layer = self.transpose_for_scores(mixed_query_layer)
+            #print("\n--query layer size ", query_layer.size())
+            key_layer = self.transpose_for_scores(mixed_key_layer) 
+            value_layer = self.transpose_for_scores(mixed_value_layer)
+            
+        ###If the dimensionality equals 4 (that is we process several frames) then we first
+        ###need to compute temporal attention
+        #mixed layers have size [batchsize, num_frames, 100, 768]
+        elif len(hidden_states.size())==4:
+            #print(f"tempkey: {self.tempkey.weight}")
+            #print("\n--hidden_states", hidden_states)
+            mixed_query_layer = self.tempquery(hidden_states)
+            #print("\n--mixed_query size ", mixed_query_layer.size())
+            mixed_key_layer = self.tempkey(context)
+            mixed_value_layer = self.tempvalue(context)
+
+            query_layer = self.transpose_for_scores(mixed_query_layer, temporalflag=True)
+            #print("\n--query layer size ", query_layer.size())
+            key_layer = self.transpose_for_scores(mixed_key_layer, temporalflag=True) 
+            value_layer = self.transpose_for_scores(mixed_value_layer, temporalflag=True)
+
+
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        #print("\n--attention_score size ", attention_scores.size())
-        if attention_scores.size()==torch.Size([self.batch_size,self.num_attention_heads,18,100]) and flagcross==1 and \
+
+        ##saving heatmaps
+        if attention_scores.size()==torch.Size([self.batch_size,self.num_attention_heads,QUERY_LENGTH+2,100]) and flagcross==1 and \
             self.save_heatmap==True:
             pdb.set_trace()
             save_heatmap(attention_scores, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'attsc', 'lang')
 
-        if attention_scores.size()==torch.Size([self.batch_size,self.num_attention_heads,100,18]) and flagcross==1 and \
+        if attention_scores.size()==torch.Size([self.batch_size,self.num_attention_heads,100,QUERY_LENGTH+2]) and flagcross==1 and \
             self.save_heatmap==True:
-            pdb.set_trace()
             save_heatmap(attention_scores, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'attsc', 'visn')
+        ##
 
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)  #
+
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
         if attention_mask is not None:
             attention_scores = attention_scores + attention_mask
         # Normalize the attention scores to probabilities.
-        attention_probs = nn.Softmax(dim=-1)(attention_scores) #
+        attention_probs = nn.Softmax(dim=-1)(attention_scores)
         #print("\n--attention_probs size ", attention_probs.size())
+        
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
-        attention_probs = self.dropout(attention_probs) #
-        context_layer = torch.matmul(attention_probs, value_layer) #
-        #print("\n--context layer size ", context_layer.size())
-        if context_layer.size()==torch.Size([self.batch_size,self.num_attention_heads,18,64]) and flagcross==1 and \
+        if len(attention_probs.size())==4:
+            attention_probs = self.dropout(attention_probs)
+        context_layer = torch.matmul(attention_probs, value_layer)
+
+
+        ##saving heatmaps
+        if context_layer.size()==torch.Size([self.batch_size,self.num_attention_heads,QUERY_LENGTH+2,64]) and flagcross==1 and \
             self.save_heatmap==True:
-            pdb.set_trace()
             save_heatmap(context_layer, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'ctxlay', 'lang')
 
         if context_layer.size()==torch.Size([self.batch_size,self.num_attention_heads,100,64]) and flagcross==1 and \
             self.save_heatmap==True:
-            pdb.set_trace()
             save_heatmap(context_layer, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'ctxlay', 'visn')
+        ##
 
-        context_layer = context_layer.permute(0, 2, 1, 3).contiguous() 
-        #print("\n--Permuted_context layer size ", context_layer.size())
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        #print("\n--New context layer shape ", new_context_layer_shape)
-        context_layer = context_layer.view(*new_context_layer_shape)
-        #print("BertAttention size of output :", context_layer.size())
-        return context_layer
+
+        ###If the dimensionality equals 4, then we already computed spatial attention
+        if len(context_layer.size())==4:
+            context_layer = context_layer.permute(0, 2, 1, 3).contiguous() 
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(*new_context_layer_shape)
+            
+            return context_layer
+        
+
+        ###Otherwise we must do it now
+        if len(context_layer.size())==5:
+            context_layer = context_layer.permute(0, 3, 2, 1, 4).contiguous() 
+            ###Cast the tensors back in the embedding space to perform query/key/value projections
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(*new_context_layer_shape)
+
+            mixed_query_layer = self.query(context_layer)
+            mixed_key_layer = self.key(context_layer)
+            mixed_value_layer = self.value(context_layer)
+            
+            #mixed layers have size [batchsize, num_frames, 100, 768]
+            query_layer = self.transpose_for_scores(mixed_query_layer)
+            #print("\n--query layer size ", query_layer.size())
+            key_layer = self.transpose_for_scores(mixed_key_layer)
+            value_layer = self.transpose_for_scores(mixed_value_layer)
+            # Take the dot product between "query" and "key" to get the raw attention scores.
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            
+            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+            # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
+            if attention_mask is not None:
+                attention_scores = attention_scores + attention_mask
+            
+            # Normalize the attention scores to probabilities.
+            attention_probs = nn.Softmax(dim=-1)(attention_scores)
+            
+            # This is actually dropping out entire tokens to attend to, which might
+            # seem a bit unusual, but is taken from the original Transformer paper.
+            attention_probs = self.dropout(attention_probs)
+            context_layer = torch.matmul(attention_probs, value_layer)
+            
+            context_layer = context_layer.permute(0, 1, 3, 2, 4).contiguous() 
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(*new_context_layer_shape)
+            
+            ###context layer has size [batchsize, num_frames, num_objs, hidden_size]
+            return context_layer
 
 
 class BertAttOutput(nn.Module):
@@ -518,6 +595,19 @@ class BertLayer(nn.Module):
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
+    
+class RelationalLayer(nn.Module):
+    def __init__(self, args, config):
+        super(RelationalLayer, self).__init__()
+        self.attention = BertSelfattLayer(args, config)
+        self.intermediate = BertIntermediate(config)
+        self.output = BertOutput(config)
+
+    def forward(self, hidden_states, attention_mask):
+        attention_output = self.attention(hidden_states, attention_mask)
+        intermediate_output = self.intermediate(attention_output)
+        layer_output = self.output(intermediate_output, attention_output)
+        return layer_output
 
 
 """
@@ -531,7 +621,7 @@ class LXRTXLayer(nn.Module):
     def __init__(self, args, config):
         super().__init__()
         # The cross-attention Layer
-        self.visual_attention = BertCrossattLayer(args, config) #Todo
+        self.visual_attention = BertCrossattLayer(args, config) 
 
         # Self-attention Layers
         self.lang_self_att = BertSelfattLayer(args, config)
@@ -631,7 +721,7 @@ class LXRTEncoder(nn.Module):
             [BertLayer(args, config) for _ in range(self.num_l_layers)]
         )
         self.r_layers = nn.ModuleList(
-            [BertLayer(args, config) for _ in range(self.num_r_layers)]
+            [RelationalLayer(args, config) for _ in range(self.num_r_layers)]
         )
         self.x_layers = nn.ModuleList(
             [LXRTXLayer(args, config) for _ in range(self.num_x_layers)]
@@ -642,7 +732,9 @@ class LXRTEncoder(nn.Module):
         # Run visual embedding layer
         # Note: Word embedding layer was executed outside this module.
         #       Keep this design to allow loading BERT weights.
+        
         visn_feats = self.visn_fc(visn_feats)
+
         # Run language layers
         for layer_module in self.layer:
             lang_feats = layer_module(lang_feats, lang_attention_mask)
@@ -650,9 +742,13 @@ class LXRTEncoder(nn.Module):
         # Run relational layers
         for layer_module in self.r_layers:
             visn_feats = layer_module(visn_feats, visn_attention_mask)
+        ##Pool the data along the frames dimension
+        if len(visn_feats.size())==4:
+            visn_feats=torch.mean(visn_feats, dim=1) #Casting the spatio-temporal cube into a spatial matrix by taking the mean of all frames
+
 
         # Run cross-modality layers
-        layer_count=0
+        layer_count=0 #to save and plot heatmaps
         for layer_module in self.x_layers:
             layer_count+=1
             lang_feats, visn_feats = layer_module(imgid, layer_count, lang_feats, lang_attention_mask,
@@ -667,11 +763,20 @@ class BertPooler(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
 
-    def forward(self, hidden_states):
+    def forward(self, lang_output, visn_output):
         # We "pool" the model by simply taking the hidden state corresponding
-        # to the first token.
-        first_token_tensor = hidden_states[:, 0]
-        pooled_output = self.dense(first_token_tensor)
+        # to the sum of:
+        # the mean of the tokens in lang_output except the first and last ones ([CLS] and [SEP])
+        # + the mean of the tokens in visn_output except the first and last one
+        
+        mean_lang = torch.mean(lang_output[:, 1:-1], axis=1)
+        mean_visn = torch.mean(visn_output[:, 1:-1], axis=1)
+        lang_output[:,0]=mean_lang #necessary for heatmap generation
+        visn_output[:,0]=mean_visn
+        
+        aggregate_token=lang_output[:,0]+visn_output[:,0]
+
+        pooled_output = self.dense(aggregate_token)
         pooled_output = self.activation(pooled_output)
         #print("BertPooler size of output:", pooled_output.size())
         return pooled_output
@@ -978,7 +1083,7 @@ class LXRTModel(BertPreTrainedModel):
 
         # Positional Word Embeddings
         embedding_output = self.embeddings(input_ids, token_type_ids)
-
+        
         # Run LXRT backbone
         lang_feats, visn_feats = self.encoder(
             imgid,
@@ -986,7 +1091,7 @@ class LXRTModel(BertPreTrainedModel):
             extended_attention_mask,
             visn_feats=visual_feats,
             visn_attention_mask=extended_visual_attention_mask)
-        pooled_output = self.pooler(lang_feats)
+        pooled_output = self.pooler(lang_feats, visn_feats)
 
         return (lang_feats, visn_feats), pooled_output
 

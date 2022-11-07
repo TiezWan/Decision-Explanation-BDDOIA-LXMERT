@@ -56,6 +56,7 @@ def parse_args():
     parser.add_argument("--tiny", action='store_const', default=False, const=True)
     parser.add_argument("--tqdm", action='store_const', default=False, const=True)
     parser.add_argument("--save_heatmap", action='store_const', default=False, const=True)
+    parser.add_argument("--save_predictions", action='store_const', default=False, const=True)
 
     # Model Loading
     parser.add_argument('--load', type=str, default=None, help='Load the model (usually the fine-tuned model).')    
@@ -76,6 +77,7 @@ def parse_args():
     parser.add_argument("--xlayers", default=5, type=int, help='Number of CROSS-modality layers.')
     parser.add_argument("--rlayers", default=5, type=int, help='Number of object Relationship layers.')
     parser.add_argument("--heads", default=12, type=int, help='Number of attention heads')
+    parser.add_argument("--num_decoderlayers", default=3, type=int, help='Number of layers in the decoder')
 
     # LXMERT Pre-training Config
     parser.add_argument("--taskMatched", dest='task_matched', action='store_const', default=False, const=True)

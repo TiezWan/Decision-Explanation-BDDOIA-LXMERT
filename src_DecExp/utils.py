@@ -9,6 +9,9 @@ import os
 import numpy as np
 from tqdm import tqdm
 import torch
+import pdb
+import cv2
+
 
 csv.field_size_limit(2147483647)
 #Modified: orginal line was csv.field_size_limit(sys.maxsize) but python (and thus sys.maxsize stores numbers as llong (max value=9e18),
@@ -58,20 +61,23 @@ def load_obj_tsv(fname, topk=None):
     return data
 
 
-def load_obj_npy(flist, startk, topk=None):
-    start_time = time.time()
+def load_obj_npy(flist, startk=0, topk=None):
+    #start_time = time.time()
     data=[]
     rejected=[]
     if topk==None:
         topk=len(flist)
     if topk==1:
         try:
-            datum=np.load(flist[0], allow_pickle=True).item()
+            pdb.set_trace()
+            datum=np.load(flist[0], allow_pickle=True)
+            ##Transform the dict into a list
             a=[]
-            for key in datum.keys():
-                temp = [key, datum[key]]
-                a.append(temp)
-            data=a
+            for i in range(len(datum)):
+               for key in datum[i].keys():
+                   temp = [key, datum[key]]
+                   a.append(temp)
+               data=a
         except Exception:
             print('unpickling error, file ignored : ', flist[0])
             rejected.append(file[0])
@@ -89,7 +95,55 @@ def load_obj_npy(flist, startk, topk=None):
                 print('unpickling error, file ignored : ', file)
                 rejected.append(file)
 
-    elapsed_time = time.time() - start_time
+    #elapsed_time = time.time() - start_time
     #load_perc=(len(data)/len(flist))*100
     #print(load_perc, "% of the data loaded in ", elapsed_time, "sec")
     return data, rejected
+
+
+def video2frames(videolist):
+    for video in videolist:
+        vidcap = cv2.VideoCapture(video)
+        num_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        print(f"number of frames: {num_frames}")
+        v_w  = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))   # int `width`
+        v_h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # int `height`
+        videos=[]
+        frames=np.zeros([num_frames, v_h, v_w, 3])
+
+        for image_num in range(0, int(num_frames)):
+            image=cv2.flip(vidcap.read()[1], -1) #height and width are confused at reading, so a flip is necessary
+            frames[image_num,:,:,:]=image
+        
+        videos.append(frames)
+        
+    vidcap.release()
+    cv2.destroyAllWindows()
+    return videos
+
+
+def list2Tensor(tensors):
+    """
+    tensors can be a torch.Tensor or
+    an iterable of Tensors. It can't be a numpy array.
+    When tensors is an iterable of Tensors, it pads
+    the Tensors with zeros so that they have the same
+    shape
+    """
+    if isinstance(tensors, torch.Tensor):
+        print("input is already a tensor")
+        return tensors
+            
+        
+    elif isinstance(tensors, (tuple, list)):
+        assert type(tensors[0])==torch.Tensor, "input is not an iterable of torch tensors"
+        #max_size = tuple(max(s) for s in zip(*[img.shape for img in tensors]))
+        dimsizes=[tensors[0].size()[i] for i in range(tensors[0].dim())]
+        dimsizes.insert(0, len(tensors))
+        out=torch.zeros(dimsizes)
+        for i in range(dimsizes[0]):
+            out[i]=tensors[i]
+        return out
+            
+    else:
+        raise TypeError("Unsupported type for to_image_list: {}".format(type(tensors)))

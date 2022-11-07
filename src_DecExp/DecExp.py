@@ -1,6 +1,7 @@
 import os
 import collections
 import sys
+import json
 
 import torch
 import torch.nn as nn
@@ -9,13 +10,15 @@ from tqdm import tqdm
 import datetime
 import numpy as np
 import pdb #For debugging
+import random
 
 from param import args
 from pretrain.qa_answer_table import load_lxmert_qa
-from DecExp_model import DecExpModel, ANSWER_LENGTH
+from DecExp_model import DecExpModel, ANSWER_LENGTH, QUERY_LENGTH
 from DecExp_data import DecExpDataset
 from lxrt.optimization import BertAdam
 
+LOSSRATIODEC2EXP=5.
 
 import warnings
 warnings.filterwarnings("ignore") #Attempts to ignore deprecated warnings from Pytorch, as those haven't been fixed in this torch version
@@ -62,13 +65,24 @@ class DecExp:
         print("Model built \n")
 
         # Load pre-trained weights
-        if args.load is not None:
-            self.load(args.load)
-        if args.load_lxmert is not None:
+        if args.load_lxmert is not None: #pre-trained weights
             self.model.lxrt_encoder.load(args.load_lxmert)
-        if args.load_lxmert_qa is not None:
+        if args.load_lxmert_qa is not None: #fine-tuned wieghts with QA answer head
             load_lxmert_qa(args.load_lxmert_qa, self.model,
                         label2ans=self.train_tuple.dataset.label2ans)
+        if args.load is not None: #fine-tuned weights from previous run
+            self.load(args.load)
+        ###Selectively freeze layers:
+        # for rlayer in range(args.rlayers):
+        #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempquery.weight.requires_grad=False
+        #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempkey.weight.requires_grad=False
+        #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempvalue.weight.requires_grad=False
+
+        ###Otherwise, freeze everything and unfreeze specific layers
+        # for param in self.model.parameters():
+        #     param.requires_grad=False
+            ###And selectively unfreeze layers after this
+
 
         #Testing process
         if args.test==True:
@@ -99,34 +113,38 @@ class DecExp:
             self.model.lxrt_encoder.multi_gpu()
 
         #Class weighting
-        if args.dotrain==True:
-            print("Building class weights")
-            temp_loader = DataLoader(
-                    self.trainset, batch_size=args.batch_size,
-                    shuffle=True, num_workers=args.num_workers,
-                    drop_last=False, pin_memory=False)
-            nsamples1=np.zeros(25)
-            temp_barloader=tqdm(temp_loader, total=int(args.img_num/args.batch_size))
-            for batchdata in temp_barloader:
-                temp_labels = batchdata[5]
-                for sample in temp_labels:
-                    for i in range(25):
-                        if sample[i]==1:
-                            nsamples1[i]+=1
-            del temp_loader, temp_labels #Freeing up memory
-            print(nsamples1)
-            clweight= torch.from_numpy((self.trainset.__len__()-nsamples1) / nsamples1)
-            for i in range(25): #Preventing infinite values
-                if clweight[i]>10000:
-                    clweight[i]=10000
-            clweight=clweight.cuda()
-            print(clweight)
-        else:
-            clweight=torch.from_numpy(np.ones([1,25]))
+        #if args.dotrain==True:
+        #    print("Building class weights")
+        #    temp_loader = DataLoader(
+        #            self.trainset, batch_size=args.batch_size,
+        #            shuffle=True, num_workers=args.num_workers,
+        #            drop_last=False, pin_memory=False)
+        #    nsamples1=np.zeros(ANSWER_LENGTH)
+        #    #pdb.set_trace()
+        #    temp_barloader=tqdm(temp_loader, total=int(args.img_num/args.batch_size))
+        #    #print(next(iter(temp_loader)))
+        #    for batchdata in temp_barloader:
+        #        temp_labels = batchdata[5]
+        #        for sample in temp_labels:
+        #            for i in range(ANSWER_LENGTH):
+        #                if sample[i]==1:
+        #                    nsamples1[i]+=1
+        #    del temp_loader, temp_labels #Freeing up memory
+        #    print(nsamples1)
+        #    clweight= torch.from_numpy((self.trainset.__len__()-nsamples1) / nsamples1)
+        #    for i in range(ANSWER_LENGTH): #Preventing infinite values
+        #        if clweight[i]>10000:
+        #            clweight[i]=10000
+        #    clweight=clweight.cuda()
+        #    print(clweight)
+        #else:
+        #    clweight=torch.ones([ANSWER_LENGTH])
 
         # Loss and Optimizer
         print("batch_size:", args.batch_size)
-        self.bce_loss = nn.BCEWithLogitsLoss(pos_weight=clweight) #Loss for multi-label multi-class classification. Choice: mean of the outputs
+        #self.bce_loss = nn.BCEWithLogitsLoss(pos_weight=clweight, reduction='none') #Loss for multi-label multi-class classification. Choice: mean of the outputs
+        #clweight=torch.ones([ANSWER_LENGTH])
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.batches_per_epoch=int(np.ceil(self.trainset.__len__()/args.batch_size))
         print("Batches per epoch: ", self.batches_per_epoch)
         t_total = int(self.batches_per_epoch * args.epochs)
@@ -139,14 +157,17 @@ class DecExp:
                                 t_total=t_total)
         else:
             self.optim = args.optimizer(self.model.parameters(), args.lr)
-        
-        #Question
-        self.sent=['traffic light red yellow green lane straight left right obstacle car person rider other sign stop']
-        #This is the question sent to the model
 
 
     def train(self):
         print("Starting training")
+
+        with open("Query_list_pre.txt", 'r') as f:
+            querylist=f.readlines()
+            for i in range(len(querylist)):
+                querylist[i]=querylist[i].replace("\n", "")
+
+        obj_cats=list(json.load(open("visual_genome_categories.json")).values())[0]
 
         best_valid = 0.
         best_bitwise_valid=0.
@@ -176,18 +197,36 @@ class DecExp:
             for batchdata in barloader:
                 trainbatch+=1
                 #print("Training batch ",trainbatch, "/", self.batches_per_epoch)
-                idx, img_id, obj_num, feats, boxes, label = batchdata
-                idx=idx.tolist()
-                #____________________________________ 
+                idx, img_id, obj_num, feats, boxes, objs, labeldigits, label = batchdata
+                
+                #idx=idx.tolist()
+                #____________________________________
                 #For one batch
                 self.model.train() #Tells the model that we are in train mode
                 self.optim.zero_grad() #Reset all gradients to 0
-                feats, boxes, label = feats.cuda(), boxes.cuda(), label.cuda() #label is the logits after sigmoid
-                logit = self.model(img_id, feats, boxes, self.sent) #Does the model return logits or labels ? -> logits
+                feats, boxes, objs, labeldigits = feats.cuda(), boxes.cuda(), objs.cuda(), labeldigits.cuda() #label is the logits after sigmoid
+                
+                self.sent=[]
+                chosen_image=0
+                for batch in range(args.batch_size):
+                    temp=""
+                    for i in range(nso):
+                        temp+=obj_cats[int(random.choice(objs[batch][chosen_image]))]["name"]
+                        temp+=" "
+                    for i in range(nsq):
+                        temp+=random.choice(querylist)
+                        temp+=" "
+                    temp=temp[:-1]
+                    self.sent.append(temp)
 
-                assert logit.size(dim=1) == label.size(dim=1) == ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
-                l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
-                loss = self.bce_loss(logit, label) + args.l2reg * l2_norm
+                logit = self.model(img_id[0], feats, boxes, self.sent) #Does the model return logits or labels ? -> logits
+
+                assert logit.size(dim=1) == labeldigits.size(dim=1) == ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
+                #l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
+                loss_unreduced = self.bce_loss(logit, labeldigits)
+                #for i in range(4):
+                #    loss_unreduced[i]*=LOSSRATIODEC2EXP
+                loss= torch.mean(loss_unreduced) #+ args.l2reg * l2_norm
                 
                 #print("loss :", loss.item(), "\n")
                 #loss = loss * logit.size(1) #Removing the mean reduction of bce_loss to get the sum of all components
@@ -196,12 +235,14 @@ class DecExp:
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), 5.)
                 self.optim.step()
-                for indx,l in zip(idx, label.cpu().numpy()):
+                for indx,l in zip(idx, labeldigits.cpu().numpy()):
                     idx2ans[indx]=l #Make sure that imgid is in quotes to be used in DecExpEvaluate. idx2ans = {idx1:label1, ..., idxn:labeln}
                 temp_loss_hist.append(loss.item())
                 #self.loss_hist[epoch]=loss.item() #Save the loss at the end of each epoch for later plotting along with the epoch number as key
                 str_loss="loss: {0:.3f}".format(loss.item())
                 barloader.set_description(str_loss)
+                
+                del idx, img_id, obj_num, feats, boxes, objs, labeldigits, label
             
             self.loss_hist[epoch]=temp_loss_hist
             #print(self.loss_hist[epoch])
@@ -214,9 +255,9 @@ class DecExp:
                 f.write(str_loss)
                 f.write("\n")
                 f.flush()
-            decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
+            #decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
 
-            train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, actiontrain_acc=self.evaluate(self.trainset) #Computes training accuracy
+            train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, actiontrain_acc=self.evaluate(self.trainset, self.sent) #Computes training accuracy
             log_str="\nTraining --- \n  Label-wise accuracy: Epoch {0}: {1} % \n  Bit-wise accuracy: Epoch {0}: {2} \n  Bit-wise F1-score: Epoch {0}: {3} \n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100., trainF1)
 
             with open(args.output + "/traintrace.log", 'a') as f:
@@ -227,7 +268,7 @@ class DecExp:
 
 
             if args.valid != "" and args.valid != None:
-                val_accuracy, bitwise_val_accuracy, val_loss, val_trace, valF1, actionval_acc=self.evaluate(self.validset) #Compute validation accuracy
+                val_accuracy, bitwise_val_accuracy, val_loss, val_trace, valF1, actionval_acc=self.evaluate(self.validset, self.sent) #Compute validation accuracy
                 self.valacc_hist[epoch]=val_accuracy #Save the validation accuracy from the current epoch for later plotting
                 self.val_loss_hist[epoch]=val_loss
                 self.bitwise_valacc_hist[epoch]=bitwise_val_accuracy
@@ -242,7 +283,7 @@ class DecExp:
 
                 log_str += "Validation --- \n  Label-wise accuracy: \n    Epoch {0}: {1} %\n    Epoch {0}: Best {2} %\n  Bit-wise accuracy: \n    \
     Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n  Bit-wise F1-score: \n    Epoch {0}: {5} \n    Epoch {0}\
- Best Bit-wise F1-score{6} \n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100., valF1, best_F1)
+ Best Bit-wise F1-score {6} \n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100., valF1, best_F1)
             
                 with open(args.output + "/valhist.log", 'a') as f:
                     f.write(log_str)
@@ -270,7 +311,7 @@ class DecExp:
         #date=str(datetime.datetime.now())[:19].replace('-', '_').replace(' ', '-').replace(':', '_')
         #self.save('DecExp_train_weights_%s' %date)
 
-    def predict(self, eval_loader, eval_batches, dump=None):
+    def predict(self, eval_loader, eval_batches, sents, dump=None):
         """
         Predict the answers to questions in a data split.
 
@@ -279,27 +320,46 @@ class DecExp:
         :return: A dict of question_id to answer.
         """
         self.model.eval()
-        idx2ansval = {}
+        idx2anseval = {}
         batchval=0
         
         for data in tqdm(eval_loader, total=eval_batches):
             batchval+=1
-            indx, img_id, obj_num, feats, boxes = data[0:5]
-            indx=indx.tolist()
+            idx, img_id, obj_num, feats, boxes, objs = data[0:6]
+            
+            obj_cats=list(json.load(open("visual_genome_categories.json")).values())[0]
+            sents=[]
+            for batch in range(args.batch_size):
+                temp=""
+                for i in range(100):
+                    temp+=obj_cats[int(objs[batch, 0, i])]["name"] #Deriving sents from the first image
+                    temp+=" "
+                temp+=(QUERY_LENGTH-2-len(temp.split()))*"[SEP] " #Padding
+                temp=temp[:-1]
+                sents.append(temp)
+
+            with open(args.output + "/sentstrace.log", 'a') as f:
+                f.write(str(sents))
+                f.write("\n")
+                f.write(str(img_id))
+                f.write("\n")
+            
+            idx=idx.tolist()
             torch.cuda.empty_cache()
             with torch.no_grad(): #Making sure we don't do any training here
                 feats, boxes = feats.cuda(), boxes.cuda()
-                logit = self.model(img_id, feats, boxes, self.sent)
+                logit = self.model(img_id, feats, boxes, sents)
                 label=nn.Sigmoid()(logit)
-                for index, l in zip(indx, label.cpu().numpy()):
-                    idx2ansval[index] = np.array(l)
-            if dump is not None:
-                self.dump_result(imgid2ans, dump)
-        return indx, idx2ansval
+                for index, l in zip(idx, label.cpu().numpy()):
+                    idx2anseval[index] = np.array(l)
+            #if dump is not None:
+            #    self.dump_result(imgid2ans, dump)
+        return img_id, idx2anseval
 
-    def evaluate(self, dset, dump=None):
+    def evaluate(self, dset, sents, dump=None):
         """Evaluate all data in data_tuple."""
         print("\n Starting evaluation")
+        
         self.val_loss={}
         #if args.img_num!=None:
         #    val_batches=int(np.ceil(args.img_num/args.batch_size))
@@ -309,22 +369,32 @@ class DecExp:
         eval_answers={}
         score = 0.
         tolerance=0.5 #We accept a confidence level of 1-0.5=0.5, that is 50% (Binary classification)
-        nbequal=25 #number of bits within each prediction that have to be equal to the label in order to classify as correct.
+        nbequal=ANSWER_LENGTH #number of bits within each prediction that have to be equal to the label in order to classify as correct.
         eval_loader = DataLoader(
             dset, batch_size=args.batch_size,
             shuffle=True, num_workers=args.num_workers,
             drop_last=True, pin_memory=False)
         print("Dataloader loaded")
-        idx, temp=self.predict(eval_loader, eval_batches, dump)
+        imgids, temp=self.predict(eval_loader, eval_batches, sents, dump)
         eval_answers.update(temp)
-
+        
+        if args.save_predictions==True:
+            with open(args.output + "/predictions.log", 'a') as f:
+                for idx in eval_answers.keys():
+                    f.write(str(dset.idx2label[idx][0]))
+                    f.write(", ")
+                    f.write(str(dset.idx2label[idx][1]))
+                    f.write(", ")
+                    f.write(str(eval_answers[idx]))
+                    f.write("\n")
+        
         #get labels for the idx chosen by the dataloader from the dataset annotations
         labels={}
         for indx in temp.keys():
             labels[indx]=(np.array(dset.idx2label[indx][1]))
 
         del temp
-        trace=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] #Count position-wise errors over the dataset
+        trace=np.zeros(ANSWER_LENGTH) #Count position-wise errors over the dataset
         fulllabel_score=0
         actionlabel_score=0
         bitwise_score=0
@@ -343,7 +413,7 @@ class DecExp:
             #if tempactions==4:
                 #actionlabel_score+=1
 
-            for bit in range(25):
+            for bit in range(ANSWER_LENGTH):
                 if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
                     bitwise_score+=1
                     temp+=1
@@ -368,11 +438,14 @@ class DecExp:
         avg_eval_loss=sum(listlosses)/len(listlosses)
         actionlabel_acc=actionlabel_score/(len(eval_answers)*4)
         label_acc=fulllabel_score/len(eval_answers)
-        bitwise_acc=bitwise_score/(len(eval_answers)*25)
+        bitwise_acc=bitwise_score/(len(eval_answers)*ANSWER_LENGTH)
         F1score=Truepos/(Truepos+0.5*(Falsepos+Falseneg))
-        print("\nprecision: ", (Truepos/(Truepos+Falsepos)))
-        print("\nrecall: ", (Truepos/(Truepos+Falseneg)))
-        print("Bitwise action accuracy: ", actionlabel_acc*100.)
+        try:
+            print("\nprecision: ", (Truepos/(Truepos+Falsepos)))
+            print("\nrecall: ", (Truepos/(Truepos+Falseneg)))
+            print("Bitwise action accuracy: ", actionlabel_acc*100.)
+        except:
+            print("error while computing precision, recall or accuracy")    
         return label_acc, bitwise_acc, avg_eval_loss, trace, F1score, actionlabel_acc
 
 
@@ -422,27 +495,49 @@ def get_n_params(model):
     return pp
 
 if __name__ == "__main__":
+    # Set process start-method
+    # from torch.multiprocessing import set_start_method
+    # try:
+    #     set_start_method('spawn')
+    # except:
+    #     print("cannot set start method to 'spawn'")
+    #     sys.exit()
     # Build Class
+    args.img_num=None
     args.train='train'
-    args.valid='test'
+    args.valid='val'
     args.test=None
-    args.batch_size=8
-    args.epochs=50
+    args.batch_size=2
+    args.epochs=300
     #args.output='./snap/no_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8_feats100'
-    args.output='./snap/shuffleboxes_2head_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8'
+    args.output='./snap/bdd100k/temp_to_delete'
     args.lr=5e-5
-    #args.load='./snap/2head_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8/epoch_41' #Load decexp model weights. Note: It is different from loading LXMERT pre-trained weights.
-    #args.load_lxmert='./snap/model'
+    args.num_decoderlayers=1
+    
+    #Load decexp fine-tuned model weights. Note: It is different from loading LXMERT pre-trained weights.
+    #args.load='./snap/lastframe/x_varqueries_meanlvpool_train_all_12h_9_4_5_bs8/epoch_2' 
+    
+    args.load_lxmert='./snap/model' #load LXMERT pre-trained weights
+    args.save_predictions=False
     args.save_heatmap=False
-    args.tiny=True
-    args.num_workers=4
-    args.fromScratch=False
+    args.num_workers=0
+    
     args.dotrain=True #True: trains the model. False: Performs evaluation only
     args.heads=12
-    args.llayers=3
-    args.xlayers=3
-    args.rlayers=3
-    args.l2reg=0.0003
+    args.llayers=1
+    args.xlayers=1
+    args.rlayers=1
+    args.l2reg=0.
+    nso=8
+    nsq=QUERY_LENGTH-nso
+
+    #Question
+    #evalsents=["traffic light red yellow green lane forward stop left right obstacle car person rider sign other"]
+    evalsents=["person truck headlight sky license plate bicycle windshield people child"]
+    #evalsents=["table guitar tobacco pen screw keyboard laser magnet"]
+    #evalsents=["building building flag flag flag flag building light light street people light street building building flag street car man window light window light people crosswalk street building sign light window building building man window sign window building street sign man flag flag window building window person man window taxi street light light street window building light light street flag window line sign street window window street window light car man car light building city window sign pole sign street window light window light crosswalk window awning person building light car window people building street building flag crosswalk street window traffic"]
+    #evalsents=["building"]
+
     decexp = DecExp()
 
     if args.test!=True:
@@ -454,7 +549,7 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     print("loading epoch", i)
                     #decexp.load('./snap/train_full_3h_3_3_3_x/epoch_'+str(i))
-                eval_label_accuracy, eval_bitwise_accuracy, avg_eval_loss, eval_trace, evalF1, action_acc=decexp.evaluate(decexp.validset)
+                eval_label_accuracy, eval_bitwise_accuracy, avg_eval_loss, eval_trace, evalF1, action_acc=decexp.evaluate(decexp.validset, evalsents)
                 #print("Train accuracy", train_accuracy*100., "Avg loss: ", avg_train_loss)
                 print("Val accuracy", eval_label_accuracy*100., "Avg loss: ", avg_eval_loss)
 
