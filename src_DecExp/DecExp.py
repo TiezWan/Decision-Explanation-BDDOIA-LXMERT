@@ -503,7 +503,7 @@ if __name__ == "__main__":
     #     print("cannot set start method to 'spawn'")
     #     sys.exit()
     # Build Class
-    args.img_num=100
+    args.img_num=None
     args.train='train'
     args.valid='val'
     args.test=None
