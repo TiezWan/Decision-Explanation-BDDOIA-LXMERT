@@ -144,7 +144,7 @@ class DecExpDataset(Dataset):
         assert obj_num[0] == tempobjs[0].size()[0] == len(tempboxes[0]) == len(tempfeats[0]), f'{obj_num[0]}, {len(tempboxes[0])}, {len(tempfeats[0])}'
         
         labeldigits=torch.tensor(self.idx2label[idx][1], dtype=torch.float32)
-        label=[self.idx2label[idx][0], self.idx2label[idx][2], self.idx2label[idx][3]]
+        label=[self.idx2label[idx][2], self.idx2label[idx][3]]
         
         #convert lists to tensors
         feats=list2Tensor(tempfeats)

@@ -14,7 +14,7 @@ import random
 
 from param import args
 from pretrain.qa_answer_table import load_lxmert_qa
-from DecExp_model import DecExpModel, ANSWER_LENGTH, QUERY_LENGTH
+from DecExp_model import DecExpModel, LOGIT_ANSWER_LENGTH, QUERY_LENGTH, MAX_TEXT_ANSWER_LENGTH
 from DecExp_data import DecExpDataset
 from lxrt.optimization import BertAdam
 
@@ -119,31 +119,31 @@ class DecExp:
         #            self.trainset, batch_size=args.batch_size,
         #            shuffle=True, num_workers=args.num_workers,
         #            drop_last=False, pin_memory=False)
-        #    nsamples1=np.zeros(ANSWER_LENGTH)
+        #    nsamples1=np.zeros(LOGIT_ANSWER_LENGTH)
         #    #pdb.set_trace()
         #    temp_barloader=tqdm(temp_loader, total=int(args.img_num/args.batch_size))
         #    #print(next(iter(temp_loader)))
         #    for batchdata in temp_barloader:
         #        temp_labels = batchdata[5]
         #        for sample in temp_labels:
-        #            for i in range(ANSWER_LENGTH):
+        #            for i in range(LOGIT_ANSWER_LENGTH):
         #                if sample[i]==1:
         #                    nsamples1[i]+=1
         #    del temp_loader, temp_labels #Freeing up memory
         #    print(nsamples1)
         #    clweight= torch.from_numpy((self.trainset.__len__()-nsamples1) / nsamples1)
-        #    for i in range(ANSWER_LENGTH): #Preventing infinite values
+        #    for i in range(LOGIT_ANSWER_LENGTH): #Preventing infinite values
         #        if clweight[i]>10000:
         #            clweight[i]=10000
         #    clweight=clweight.cuda()
         #    print(clweight)
         #else:
-        #    clweight=torch.ones([ANSWER_LENGTH])
+        #    clweight=torch.ones([LOGIT_ANSWER_LENGTH])
 
         # Loss and Optimizer
         print("batch_size:", args.batch_size)
         #self.bce_loss = nn.BCEWithLogitsLoss(pos_weight=clweight, reduction='none') #Loss for multi-label multi-class classification. Choice: mean of the outputs
-        #clweight=torch.ones([ANSWER_LENGTH])
+        #clweight=torch.ones([LOGIT_ANSWER_LENGTH])
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.batches_per_epoch=int(np.ceil(self.trainset.__len__()/args.batch_size))
         print("Batches per epoch: ", self.batches_per_epoch)
@@ -197,7 +197,12 @@ class DecExp:
             for batchdata in barloader:
                 trainbatch+=1
                 #print("Training batch ",trainbatch, "/", self.batches_per_epoch)
-                idx, img_id, obj_num, feats, boxes, objs, labeldigits, label = batchdata
+                idx, img_id, obj_num, feats, boxes, objs, labeldigits, labels = batchdata
+                
+                # Rearranging label, adding <SOS> and <EOS>
+                labels = [f'<SOS> {labels[0][i]} # {labels[1][i]}' for i in range(len(labels[0]))]
+                for i in range(len(labels)):
+                    labels[i]=labels[i].replace(".", " .").replace(",", " ,")
                 
                 #idx=idx.tolist()
                 #____________________________________
@@ -219,22 +224,56 @@ class DecExp:
                     temp=temp[:-1]
                     self.sent.append(temp)
 
-                logit = self.model(img_id[0], feats, boxes, self.sent) #Does the model return logits or labels ? -> logits
-
-                assert logit.size(dim=1) == labeldigits.size(dim=1) == ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
-                #l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
-                loss_unreduced = self.bce_loss(logit, labeldigits)
-                #for i in range(4):
-                #    loss_unreduced[i]*=LOSSRATIODEC2EXP
-                loss= torch.mean(loss_unreduced) #+ args.l2reg * l2_norm
+                text_logits = self.model(img_id[0], feats, boxes, self.sent, labels) #Does the model return logits or labels ? -> logits
                 
-                #print("loss :", loss.item(), "\n")
-                #loss = loss * logit.size(1) #Removing the mean reduction of bce_loss to get the sum of all components
-                                            #Uncomment if the loss is chosen without specifying the reduction (defaults to mean)
-
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.model.parameters(), 5.)
-                self.optim.step()
+                #assert logit.size(dim=1) == labeldigits.size(dim=1) == LOGIT_ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
+                assert text_logits.size(1) == self.model.ans_len
+                text_logits=text_logits.cuda()
+                
+                #Creating labels for pair-wise loss function computation
+                prob_labels=torch.zeros([len(labels), self.model.ans_len, self.model.len_wordset]).cuda()
+                                
+                for batch in range(len(labels)):
+                    words=labels[batch].split(" ") 
+                    for word_nr in range(1, len(words)):
+                        prob_labels[batch, word_nr-1, self.model.word2index[words[word_nr]]]=1
+                    #Add <EOS> at the end
+                    prob_labels[batch, -1, self.model.word2index['<EOS>']]=1
+        
+                assert prob_labels.shape==text_logits.shape, "label shape does not match prediction shape"
+                
+                # Shuffling pairs
+                # First, flattening batches
+                batchlist_text=[]
+                for i in range(text_logits.size(0)):
+                    batchlist_text.append(text_logits[i])
+                text_logits=torch.cat(batchlist_text, 0)
+                
+                batchlist_labels=[]
+                for i in range(prob_labels.size(0)):
+                    batchlist_labels.append(prob_labels[i])
+                prob_labels=torch.cat(batchlist_labels, 0)
+                
+                # Shuffling
+                shufflevector=torch.randperm(text_logits.size(0))
+                text_logits=text_logits[shufflevector]
+                prob_labels=prob_labels[shufflevector]
+                
+                for backwardspass in range(text_logits.size(0)):
+                    #l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
+                    loss_unreduced = self.bce_loss(text_logits[backwardspass], prob_labels[backwardspass])
+                    #print(f"loss={loss_unreduced}")
+                    loss= torch.mean(loss_unreduced) #+ args.l2reg * l2_norm
+                    
+                    #print("loss :", loss.item(), "\n")
+                    #loss = loss * logit.size(1) #Removing the mean reduction of bce_loss to get the sum of all components
+                                                #Uncomment if the loss is chosen without specifying the reduction (defaults to mean)
+                    loss.backward(retain_graph=True)
+                    nn.utils.clip_grad_norm_(self.model.parameters(), 5.)
+                    self.optim.step()
+                    self.optim.zero_grad()
+                    #print(self.model.decoderlayer.linear1.weight)
+                
                 for indx,l in zip(idx, labeldigits.cpu().numpy()):
                     idx2ans[indx]=l #Make sure that imgid is in quotes to be used in DecExpEvaluate. idx2ans = {idx1:label1, ..., idxn:labeln}
                 temp_loss_hist.append(loss.item())
@@ -242,7 +281,9 @@ class DecExp:
                 str_loss="loss: {0:.3f}".format(loss.item())
                 barloader.set_description(str_loss)
                 
-                del idx, img_id, obj_num, feats, boxes, objs, labeldigits, label
+                del idx, img_id, obj_num, feats, boxes, objs, labeldigits, labels
+            
+            pdb.set_trace()
             
             self.loss_hist[epoch]=temp_loss_hist
             #print(self.loss_hist[epoch])
@@ -369,7 +410,7 @@ class DecExp:
         eval_answers={}
         score = 0.
         tolerance=0.5 #We accept a confidence level of 1-0.5=0.5, that is 50% (Binary classification)
-        nbequal=ANSWER_LENGTH #number of bits within each prediction that have to be equal to the label in order to classify as correct.
+        nbequal=LOGIT_ANSWER_LENGTH #number of bits within each prediction that have to be equal to the label in order to classify as correct.
         eval_loader = DataLoader(
             dset, batch_size=args.batch_size,
             shuffle=True, num_workers=args.num_workers,
@@ -394,7 +435,7 @@ class DecExp:
             labels[indx]=(np.array(dset.idx2label[indx][1]))
 
         del temp
-        trace=np.zeros(ANSWER_LENGTH) #Count position-wise errors over the dataset
+        trace=np.zeros(LOGIT_ANSWER_LENGTH) #Count position-wise errors over the dataset
         fulllabel_score=0
         actionlabel_score=0
         bitwise_score=0
@@ -413,7 +454,7 @@ class DecExp:
             #if tempactions==4:
                 #actionlabel_score+=1
 
-            for bit in range(ANSWER_LENGTH):
+            for bit in range(LOGIT_ANSWER_LENGTH):
                 if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
                     bitwise_score+=1
                     temp+=1
@@ -438,7 +479,7 @@ class DecExp:
         avg_eval_loss=sum(listlosses)/len(listlosses)
         actionlabel_acc=actionlabel_score/(len(eval_answers)*4)
         label_acc=fulllabel_score/len(eval_answers)
-        bitwise_acc=bitwise_score/(len(eval_answers)*ANSWER_LENGTH)
+        bitwise_acc=bitwise_score/(len(eval_answers)*LOGIT_ANSWER_LENGTH)
         F1score=Truepos/(Truepos+0.5*(Falsepos+Falseneg))
         try:
             print("\nprecision: ", (Truepos/(Truepos+Falsepos)))
@@ -503,7 +544,7 @@ if __name__ == "__main__":
     #     print("cannot set start method to 'spawn'")
     #     sys.exit()
     # Build Class
-    args.img_num=None
+    args.img_num=50
     args.train='train'
     args.valid='val'
     args.test=None
