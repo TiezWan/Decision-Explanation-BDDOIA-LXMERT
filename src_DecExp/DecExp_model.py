@@ -77,7 +77,10 @@ class DecExpModel(nn.Module):
             
         ## Tokenization and embeddings
             #Tokenization
-            input_ids_list=[[self.word2index[word] for word in labels[i].split(" ")] for i in range(args.batch_size)]
+            try:
+                input_ids_list=[[self.word2index[word] for word in labels[i].split(" ")] for i in range(args.batch_size)]
+            except:
+                print(labels)
             
             #Padding to the same length
             for ids in input_ids_list:
@@ -87,7 +90,7 @@ class DecExpModel(nn.Module):
             # Setting Decisions and Explanations to groups A and B
             features_type_ids = []
             for i in range(len(input_ids_list)):
-                sep_index = input_ids_list[i].index(790)
+                sep_index = input_ids_list[i].index(self.word2index["#"])
                 temp = [0]*(sep_index)#0 for Decision, 1 for Explanation
                 temp.extend([1]*(len(input_ids_list[i])-(sep_index)))
                 features_type_ids.append(temp)
@@ -129,9 +132,6 @@ class DecExpModel(nn.Module):
                     #Figure out the word with maximum-likelihood with the mapping
                     out= [out_probs.tolist()[i].index(max(out_probs.tolist()[i])) for i in range(out_probs.size(0))]
                     chosen_words=[self.index2word[idx] for idx in out]
-                    lens=[len(sentence.split(" ")) for sentence in sent_decoder]
-                    if lens[0]==5:
-                        chosen_words[0]="<EOS>"
                     #Add to tgt if EOS not prviously chosen
                     for sentence in range(args.batch_size):
                         sent_decoder[sentence]=sent_decoder[sentence] + \
@@ -140,9 +140,8 @@ class DecExpModel(nn.Module):
                         #Register if <EOS> chosen
                         if chosen_words[sentence]=="<EOS>":
                             flagEOS[sentence]=True
-                    print(lens)
-                    pdb.set_trace()
-                out=sent_decoder
+                
+                out=[sent_decoder[i].replace("<SOS> ", "").replace(" [PAD]", "") for i in range(len(sent_decoder))]
         
         # elif 'x' in self.mode and ('l' in self.mode or 'r' in self.mode):
         #     featseq, x = self.lxrt_encoder(imgid, sent, (feat, pos))

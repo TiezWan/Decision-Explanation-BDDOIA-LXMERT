@@ -82,6 +82,7 @@ class DecExpDataset(Dataset):
         #The native ids of each image in the dataset have been replaced here with a simple number ranging from 1 to img_num for access by the dataloader
 
         self.feature_extractor = feature_extraction_utils.FeatureExtractor()
+        self.total_words=sum([len((self.idx2label[idx][2] + " # " + self.idx2label[idx][2] + "<EOS>").split(" ")) for idx in self.idx2label.keys()])
 
 
     def __len__(self):

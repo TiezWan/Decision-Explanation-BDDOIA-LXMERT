@@ -92,19 +92,19 @@ class DecExp:
             print("Number of samples in test set :", self.testset.__len__())
 
             #Perform evaluation only
-            test_accuracy, avg_test_loss=decexp.evaluate(decexp.testset)
-            print("Test accuracy", test_accuracy*100., "Avg loss: ", avg_test_loss)
-            with open(args.output + '/test_acc_model_n_n_n', 'a') as f:
-                    f.write("\n\nModel: ")
-                    f.write(args.load)
-                    f.write("\nTolerance: 0.5")
-                    f.write("\nNumber of needed bits: 25")
-                    f.write("\nHeads: 12")
-                    f.write("\nTest accuracy: ")
-                    f.write(str(test_accuracy*100.))
-                    f.write(" Avg loss: ")
-                    f.write(str(avg_test_loss))
-                    f.flush()
+            # test_accuracy, avg_test_loss=decexp.evaluate(decexp.testset)
+            # print("Test accuracy", test_accuracy*100., "Avg loss: ", avg_test_loss)
+            # with open(args.output + '/test_acc_model_n_n_n', 'a') as f:
+            #         f.write("\n\nModel: ")
+            #         f.write(args.load)
+            #         f.write("\nTolerance: 0.5")
+            #         f.write("\nNumber of needed bits: 25")
+            #         f.write("\nHeads: 12")
+            #         f.write("\nTest accuracy: ")
+            #         f.write(str(test_accuracy*100.))
+            #         f.write(" Avg loss: ")
+            #         f.write(str(avg_test_loss))
+            #         f.flush()
 
 
         # GPU options
@@ -147,7 +147,8 @@ class DecExp:
         self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
         self.batches_per_epoch=int(np.ceil(self.trainset.__len__()/args.batch_size))
         print("Batches per epoch: ", self.batches_per_epoch)
-        t_total = int(self.batches_per_epoch * args.epochs)
+        #t_total = int(self.batches_per_epoch * args.epochs)
+        t_total=(args.epochs+3)*self.trainset.total_words
         print("Total number of batches): %d" % t_total)
 
         if 'bert' in args.optim:
@@ -199,7 +200,7 @@ class DecExp:
                 #print("Training batch ",trainbatch, "/", self.batches_per_epoch)
                 idx, img_id, obj_num, feats, boxes, objs, labeldigits, labels = batchdata
                 
-                # Rearranging label, adding <SOS> and <EOS>
+                # Rearranging labels, adding <SOS> and <EOS>
                 labels = [f'<SOS> {labels[0][i]} # {labels[1][i]}' for i in range(len(labels[0]))]
                 for i in range(len(labels)):
                     labels[i]=labels[i].replace(".", " .").replace(",", " ,")
@@ -225,40 +226,35 @@ class DecExp:
                     self.sent.append(temp)
 
                 text_logits = self.model(img_id[0], feats, boxes, self.sent, labels) #Does the model return logits or labels ? -> logits
+                text_logits_list=[text_logits[i, :len(labels[i].split(" "))] for i in range(args.batch_size)]
                 
                 #assert logit.size(dim=1) == labeldigits.size(dim=1) == LOGIT_ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
-                assert text_logits.size(1) == self.model.ans_len
-                text_logits=text_logits.cuda()
+                #assert text_logits.size(1) == self.model.ans_len
+                #text_logits=text_logits.cuda()
                 
                 #Creating labels for pair-wise loss function computation
-                prob_labels=torch.zeros([len(labels), self.model.ans_len, self.model.len_wordset]).cuda()
+                prob_labels_list=[torch.zeros([text_logits_list[i].size(0), self.model.len_wordset]) for i in range(args.batch_size)]
                                 
-                for batch in range(len(labels)):
-                    words=labels[batch].split(" ") 
+                for sentence in range(len(labels)):
+                    words=labels[sentence].split(" ") 
                     for word_nr in range(1, len(words)):
-                        prob_labels[batch, word_nr-1, self.model.word2index[words[word_nr]]]=1
+                        prob_labels_list[sentence][word_nr-1, self.model.word2index[words[word_nr]]]=1
                     #Add <EOS> at the end
-                    prob_labels[batch, -1, self.model.word2index['<EOS>']]=1
-        
-                assert prob_labels.shape==text_logits.shape, "label shape does not match prediction shape"
+                    prob_labels_list[sentence][-1, self.model.word2index['<EOS>']]=1
+
+                for i in range(args.batch_size):
+                    assert prob_labels_list[i].shape==text_logits_list[i].shape, f"label shape does not match prediction shape for sentence {i}"
                 
                 # Shuffling pairs
                 # First, flattening batches
-                batchlist_text=[]
-                for i in range(text_logits.size(0)):
-                    batchlist_text.append(text_logits[i])
-                text_logits=torch.cat(batchlist_text, 0)
-                
-                batchlist_labels=[]
-                for i in range(prob_labels.size(0)):
-                    batchlist_labels.append(prob_labels[i])
-                prob_labels=torch.cat(batchlist_labels, 0)
+                text_logits=torch.cat(text_logits_list, 0).cuda()
+                prob_labels=torch.cat(prob_labels_list, 0).cuda()
                 
                 # Shuffling
                 shufflevector=torch.randperm(text_logits.size(0))
                 text_logits=text_logits[shufflevector]
                 prob_labels=prob_labels[shufflevector]
-                
+                total_loss=0
                 for backwardspass in range(text_logits.size(0)):
                     #l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
                     loss_unreduced = self.bce_loss(text_logits[backwardspass], prob_labels[backwardspass])
@@ -273,17 +269,18 @@ class DecExp:
                     self.optim.step()
                     self.optim.zero_grad()
                     #print(self.model.decoderlayer.linear1.weight)
+                    str_loss="loss: 10e-3 * {0:.3f}".format(loss.item()*1000)
+                    barloader.set_description(str_loss)
+                    temp_loss_hist.append(loss.item())
                 
                 for indx,l in zip(idx, labeldigits.cpu().numpy()):
                     idx2ans[indx]=l #Make sure that imgid is in quotes to be used in DecExpEvaluate. idx2ans = {idx1:label1, ..., idxn:labeln}
-                temp_loss_hist.append(loss.item())
+                #temp_loss_hist.append(loss.item())
                 #self.loss_hist[epoch]=loss.item() #Save the loss at the end of each epoch for later plotting along with the epoch number as key
-                str_loss="loss: {0:.3f}".format(loss.item())
-                barloader.set_description(str_loss)
+                #str_loss="loss: 10e-3 * {0:.3f}".format(loss.item()*1000)
+                #barloader.set_description(str_loss)
                 
                 del idx, img_id, obj_num, feats, boxes, objs, labeldigits, labels
-            
-            pdb.set_trace()
             
             self.loss_hist[epoch]=temp_loss_hist
             #print(self.loss_hist[epoch])
@@ -296,56 +293,57 @@ class DecExp:
                 f.write(str_loss)
                 f.write("\n")
                 f.flush()
-            #decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
+            decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
 
-            train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, actiontrain_acc=self.evaluate(self.trainset, self.sent) #Computes training accuracy
-            log_str="\nTraining --- \n  Label-wise accuracy: Epoch {0}: {1} % \n  Bit-wise accuracy: Epoch {0}: {2} \n  Bit-wise F1-score: Epoch {0}: {3} \n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100., trainF1)
+            #train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, actiontrain_acc=self.evaluate(self.trainset, self.sent) #Computes training accuracy
+            train_accuracy, bitwise_train_accuracy = self.evaluate(self.trainset, self.sent) #Computes training accuracy
+            log_str="\nTraining --- \n  Label-wise accuracy: Epoch {0}: {1} % \n  Bit-wise accuracy: Epoch {0}: {2} \n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100.)
 
-            with open(args.output + "/traintrace.log", 'a') as f:
-                f.write(str(epoch))
-                f.write(": ")
-                f.write(str(train_trace))
-                f.write("\n")
+            # with open(args.output + "/traintrace.log", 'a') as f:
+            #     f.write(str(epoch))
+            #     f.write(": ")
+            #     f.write(str(train_trace))
+            #     f.write("\n")
 
 
             if args.valid != "" and args.valid != None:
-                val_accuracy, bitwise_val_accuracy, val_loss, val_trace, valF1, actionval_acc=self.evaluate(self.validset, self.sent) #Compute validation accuracy
+                #val_accuracy, bitwise_val_accuracy, val_loss, val_trace, valF1, actionval_acc=self.evaluate(self.validset, self.sent) #Compute validation accuracy
+                val_accuracy, bitwise_val_accuracy = self.evaluate(self.validset, self.sent) #Compute validation accuracy
                 self.valacc_hist[epoch]=val_accuracy #Save the validation accuracy from the current epoch for later plotting
-                self.val_loss_hist[epoch]=val_loss
+                #self.val_loss_hist[epoch]=val_loss
                 self.bitwise_valacc_hist[epoch]=bitwise_val_accuracy
-                self.valF1_hist[epoch]=valF1
+                #self.valF1_hist[epoch]=valF1
                 if val_accuracy > best_valid: #If the validation accuracy from this epoch is better than the current best from a previous epoch, save it
                     best_valid = val_accuracy
                     #self.save("BEST_val")
                 if bitwise_val_accuracy > best_bitwise_valid:
                     best_bitwise_valid=bitwise_val_accuracy
-                if valF1 > best_F1:
-                    best_F1=valF1
+                #if valF1 > best_F1:
+                #    best_F1=valF1
 
                 log_str += "Validation --- \n  Label-wise accuracy: \n    Epoch {0}: {1} %\n    Epoch {0}: Best {2} %\n  Bit-wise accuracy: \n    \
-    Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n  Bit-wise F1-score: \n    Epoch {0}: {5} \n    Epoch {0}\
- Best Bit-wise F1-score {6} \n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100., valF1, best_F1)
+Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100.)
             
                 with open(args.output + "/valhist.log", 'a') as f:
                     f.write(log_str)
                     f.flush()
+                
+                # with open(args.output + "/val_loss_hist.log", 'a') as f:
+                #     str_val_loss=str(val_loss)
+                #     f.write("Average validation loss epoch ")
+                #     f.write(str(epoch))
+                #     f.write(": ")
+                #     f.write(str_val_loss)
+                #     f.write("\n")
+                #     f.flush()
 
-                with open(args.output + "/val_loss_hist.log", 'a') as f:
-                    str_val_loss=str(val_loss)
-                    f.write("Average validation loss epoch ")
-                    f.write(str(epoch))
-                    f.write(": ")
-                    f.write(str_val_loss)
-                    f.write("\n")
-                    f.flush()
+                # print("val_loss: ",val_loss)
 
-                print("val_loss: ",val_loss)
-
-                with open(args.output + "/valtrace.log", 'a') as f:
-                    f.write(str(epoch))
-                    f.write(": ")
-                    f.write(str(val_trace))
-                    f.write("\n")
+                # with open(args.output + "/valtrace.log", 'a') as f:
+                #     f.write(str(epoch))
+                #     f.write(": ")
+                #     f.write(str(val_trace))
+                #     f.write("\n")
 
             print(log_str)
         
@@ -367,18 +365,18 @@ class DecExp:
         for data in tqdm(eval_loader, total=eval_batches):
             batchval+=1
             idx, img_id, obj_num, feats, boxes, objs = data[0:6]
-            
+
             obj_cats=list(json.load(open("visual_genome_categories.json")).values())[0]
             sents=[]
             for batch in range(args.batch_size):
                 temp=""
-                for i in range(100):
+                for i in range(20):
                     temp+=obj_cats[int(objs[batch, 0, i])]["name"] #Deriving sents from the first image
                     temp+=" "
                 temp+=(QUERY_LENGTH-2-len(temp.split()))*"[SEP] " #Padding
                 temp=temp[:-1]
                 sents.append(temp)
-
+            
             with open(args.output + "/sentstrace.log", 'a') as f:
                 f.write(str(sents))
                 f.write("\n")
@@ -389,16 +387,15 @@ class DecExp:
             torch.cuda.empty_cache()
             with torch.no_grad(): #Making sure we don't do any training here
                 feats, boxes = feats.cuda(), boxes.cuda()
-                logit = self.model(img_id, feats, boxes, sents)
-                label=nn.Sigmoid()(logit)
-                for index, l in zip(idx, label.cpu().numpy()):
-                    idx2anseval[index] = np.array(l)
+                text_pred = self.model(img_id, feats, boxes, sents)
+                for index, l in zip(idx, text_pred):
+                    idx2anseval[index] = l
             #if dump is not None:
             #    self.dump_result(imgid2ans, dump)
         return img_id, idx2anseval
 
     def evaluate(self, dset, sents, dump=None):
-        """Evaluate all data in data_tuple."""
+        """Evaluate all data in a split."""
         print("\n Starting evaluation")
         
         self.val_loss={}
@@ -410,7 +407,7 @@ class DecExp:
         eval_answers={}
         score = 0.
         tolerance=0.5 #We accept a confidence level of 1-0.5=0.5, that is 50% (Binary classification)
-        nbequal=LOGIT_ANSWER_LENGTH #number of bits within each prediction that have to be equal to the label in order to classify as correct.
+        nbequal=MAX_TEXT_ANSWER_LENGTH #number of words within each prediction that have to be equal to the label in order to classify as correct.
         eval_loader = DataLoader(
             dset, batch_size=args.batch_size,
             shuffle=True, num_workers=args.num_workers,
@@ -424,70 +421,89 @@ class DecExp:
                 for idx in eval_answers.keys():
                     f.write(str(dset.idx2label[idx][0]))
                     f.write(", ")
-                    f.write(str(dset.idx2label[idx][1]))
+                    f.write("ground truth: "+str(dset.idx2label[idx][2]) + " # " + str(dset.idx2label[idx][3]))
                     f.write(", ")
-                    f.write(str(eval_answers[idx]))
+                    f.write("prediction: "+str(eval_answers[idx]))
                     f.write("\n")
         
         #get labels for the idx chosen by the dataloader from the dataset annotations
         labels={}
         for indx in temp.keys():
-            labels[indx]=(np.array(dset.idx2label[indx][1]))
+            labels[indx]=(f"{dset.idx2label[indx][2]} # {dset.idx2label[indx][3]} <EOS>")
 
         del temp
-        trace=np.zeros(LOGIT_ANSWER_LENGTH) #Count position-wise errors over the dataset
+        #trace=np.zeros(MAX_TEXT_ANSWER_LENGTH) #Count position-wise errors over the dataset
         fulllabel_score=0
-        actionlabel_score=0
+        #actionlabel_score=0
         bitwise_score=0
-        Falsepos=0
-        Truepos=0
-        Falseneg=0
+        #Falsepos=0
+        #Truepos=0
+        #Falseneg=0
+        nbwords_total=0
 
         for indx in eval_answers.keys():
-            temp=0
+            temp=0 #Used to compute full-label accuracy
             tempactions=0
             
-            for bit in range(4):
-                if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
-                    actionlabel_score+=1
+            for i, word in enumerate(eval_answers[indx].split(" ")):
+                try:
+                    flag=word==labels[indx].split(" ")[i]
+                except IndexError:
+                    continue
+                if flag:
+                    bitwise_score+=1
+                    temp+=1
+
+            if temp==len(labels[indx].split(" ")):
+                fulllabel_score+=1
+            
+            nbwords_total+=len(eval_answers[indx].split(" "))
+        
+        label_acc=fulllabel_score/len(eval_answers.keys())
+        bitwise_acc=bitwise_score/nbwords_total
+        
+            # for bit in range(4):
+            #     if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
+            #         actionlabel_score+=1
             
             #if tempactions==4:
                 #actionlabel_score+=1
 
-            for bit in range(LOGIT_ANSWER_LENGTH):
-                if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
-                    bitwise_score+=1
-                    temp+=1
-                else:
-                    trace[bit]+=1 #Keeps track of bits that are incorrectly predicted
-                Falsepos+=int(eval_answers[indx][bit]+0.5)*(1-int(labels[indx][bit]))
-                Truepos+=int(eval_answers[indx][bit]+0.5)*int(labels[indx][bit])
-                Falseneg+=(1-int(eval_answers[indx][bit]+0.5))*int(labels[indx][bit])
+        #     for bit in range(LOGIT_ANSWER_LENGTH):
+        #         if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
+        #             bitwise_score+=1
+        #             temp+=1
+        #         else:
+        #             trace[bit]+=1 #Keeps track of bits that are incorrectly predicted
+        #         Falsepos+=int(eval_answers[indx][bit]+0.5)*(1-int(labels[indx][bit]))
+        #         Truepos+=int(eval_answers[indx][bit]+0.5)*int(labels[indx][bit])
+        #         Falseneg+=(1-int(eval_answers[indx][bit]+0.5))*int(labels[indx][bit])
 
 
-            #if np.allclose(eval_answers[indx],labels[indx], rtol=0, atol=tolerance):
-                #score+=1
-            self.val_loss[indx] = nn.BCELoss()(torch.tensor(eval_answers[indx], dtype=torch.float32), 
-                torch.tensor(labels[indx], dtype=torch.float32)).item()
+        #     #if np.allclose(eval_answers[indx],labels[indx], rtol=0, atol=tolerance):
+        #         #score+=1
+        #     self.val_loss[indx] = nn.BCELoss()(torch.tensor(eval_answers[indx], dtype=torch.float32), 
+        #         torch.tensor(labels[indx], dtype=torch.float32)).item()
 
-            if temp>=nbequal: #If a minimum number of bits correspond between prediction and annotation, score +=1
-                                #NOT THE SAME AS ADDING 1 TO SCORE IF A BIT CORRESPONDS (i.e computing the % of correct bits overall)
-                fulllabel_score+=1
+        #     if temp>=nbequal: #If a minimum number of bits correspond between prediction and annotation, score +=1
+        #                         #NOT THE SAME AS ADDING 1 TO SCORE IF A BIT CORRESPONDS (i.e computing the % of correct bits overall)
+        #         fulllabel_score+=1
 
-        print(trace)
-        listlosses=list(self.val_loss.values())
-        avg_eval_loss=sum(listlosses)/len(listlosses)
-        actionlabel_acc=actionlabel_score/(len(eval_answers)*4)
-        label_acc=fulllabel_score/len(eval_answers)
-        bitwise_acc=bitwise_score/(len(eval_answers)*LOGIT_ANSWER_LENGTH)
-        F1score=Truepos/(Truepos+0.5*(Falsepos+Falseneg))
-        try:
-            print("\nprecision: ", (Truepos/(Truepos+Falsepos)))
-            print("\nrecall: ", (Truepos/(Truepos+Falseneg)))
-            print("Bitwise action accuracy: ", actionlabel_acc*100.)
-        except:
-            print("error while computing precision, recall or accuracy")    
-        return label_acc, bitwise_acc, avg_eval_loss, trace, F1score, actionlabel_acc
+        # print(trace)
+        #listlosses=list(self.val_loss.values())
+        #avg_eval_loss=sum(listlosses)/len(listlosses)
+        # actionlabel_acc=actionlabel_score/(len(eval_answers)*4)
+        # label_acc=fulllabel_score/len(eval_answers)
+        # bitwise_acc=bitwise_score/(len(eval_answers)*LOGIT_ANSWER_LENGTH)
+        # F1score=Truepos/(Truepos+0.5*(Falsepos+Falseneg))
+        # try:
+        #     print("\nprecision: ", (Truepos/(Truepos+Falsepos)))
+        #     print("\nrecall: ", (Truepos/(Truepos+Falseneg)))
+        #     print("Bitwise action accuracy: ", actionlabel_acc*100.)
+        # except:
+        #     print("error while computing precision, recall or accuracy")  
+              
+        return label_acc, bitwise_acc#, avg_eval_loss, trace, F1score, actionlabel_acc
 
 
     def dump_result(self, imgid2ans: dict, path):
@@ -544,14 +560,14 @@ if __name__ == "__main__":
     #     print("cannot set start method to 'spawn'")
     #     sys.exit()
     # Build Class
-    args.img_num=50
+    args.img_num=1200
     args.train='train'
     args.valid='val'
     args.test=None
     args.batch_size=2
-    args.epochs=300
+    args.epochs=50
     #args.output='./snap/no_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8_feats100'
-    args.output='./snap/bdd100k/temp_to_delete'
+    args.output='./snap/bdd100k/first_decoder_run_12_5_3_3_dec_4_1200samples'
     args.lr=5e-5
     args.num_decoderlayers=1
     
@@ -559,15 +575,16 @@ if __name__ == "__main__":
     #args.load='./snap/lastframe/x_varqueries_meanlvpool_train_all_12h_9_4_5_bs8/epoch_2' 
     
     args.load_lxmert='./snap/model' #load LXMERT pre-trained weights
-    args.save_predictions=False
+    args.save_predictions=True
     args.save_heatmap=False
     args.num_workers=0
     
     args.dotrain=True #True: trains the model. False: Performs evaluation only
     args.heads=12
-    args.llayers=1
-    args.xlayers=1
-    args.rlayers=1
+    args.llayers=5
+    args.xlayers=3
+    args.rlayers=3
+    args.num_decoderlayers=4
     args.l2reg=0.
     nso=8
     nsq=QUERY_LENGTH-nso
