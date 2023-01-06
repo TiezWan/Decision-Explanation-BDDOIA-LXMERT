@@ -1,8 +1,9 @@
 input/
 output/
 .venv*
-src/snap
+src/
 src_DecExp/snap
+src_DecExp/subtasks
 src/mmf
 src/vqa-maskrcnn-benchmark
 detectron_model_x152.pth

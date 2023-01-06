@@ -36,11 +36,10 @@ class InputFeatures(object):
 
 def convert_sents_to_features(sents, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
-
     features = []
     for (i, sent) in enumerate(sents):
         tokens_a = tokenizer.tokenize(sent.strip())
-        #pdb.set_trace()
+        
 
         # Account for [CLS] and [SEP] with "- 2"
         if len(tokens_a) > max_seq_length - 2:
@@ -113,12 +112,12 @@ class LXRTEncoder(nn.Module):
     def forward(self, imgid, sents, feats, visual_attention_mask=None):
         train_features = convert_sents_to_features(
             sents, self.max_seq_length, self.tokenizer)
-            
+        
         input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long).cuda()
         input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long).cuda()
         segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long).cuda()
 
-        output = self.model(imgid, input_ids, segment_ids, input_mask,
+        output = self.model(imgid, input_ids, sents, segment_ids, input_mask,
                             visual_feats=feats, #feats=(feats,boxes) from DecExp
                             visual_attention_mask=visual_attention_mask)
         return output

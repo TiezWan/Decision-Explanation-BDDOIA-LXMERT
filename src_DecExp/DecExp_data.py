@@ -51,8 +51,8 @@ class DecExpDataset(Dataset):
         #At the time of writing this, only a subset of the total dataset is downloaded, we keep only this
         avail_data=[videoname.split(".")[0] for videoname in os.listdir(f"{BDD_DATA_ROOT}/{self.split}clips_downsampled_6fpv/")]
 
-        if args.dotrain==True: #No need to shuffle for evaluation
-            random.Random(RANDOM_SEED).shuffle(avail_data)
+        #if args.dotrain==True: #No need to shuffle for evaluation
+        #    random.Random(RANDOM_SEED).shuffle(avail_data)
 
         id2frameslabels_raw=json.load(open(f"../input/bdd100k/{LABELSJSON}"))
         
@@ -81,7 +81,7 @@ class DecExpDataset(Dataset):
         
         #The native ids of each image in the dataset have been replaced here with a simple number ranging from 1 to img_num for access by the dataloader
 
-        self.feature_extractor = feature_extraction_utils.FeatureExtractor()
+        #self.feature_extractor = feature_extraction_utils.FeatureExtractor()
         self.total_words=sum([len((self.idx2label[idx][2] + " # " + self.idx2label[idx][2] + "<EOS>").split(" ")) for idx in self.idx2label.keys()])
 
 

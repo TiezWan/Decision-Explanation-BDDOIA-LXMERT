@@ -9,6 +9,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 import torch
+import torch.nn as nn
 import pdb
 import cv2
 
@@ -101,7 +102,7 @@ def load_obj_npy(flist, startk=0, topk=None):
     return data, rejected
 
 
-def video2frames(videolist):
+def video2frames(videolist, writepath=None):
     for video in videolist:
         vidcap = cv2.VideoCapture(video)
         num_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -112,7 +113,8 @@ def video2frames(videolist):
         frames=np.zeros([num_frames, v_h, v_w, 3])
 
         for image_num in range(0, int(num_frames)):
-            image=cv2.flip(vidcap.read()[1], -1) #height and width are confused at reading, so a flip is necessary
+            #image=cv2.flip(vidcap.read()[1], -1) #height and width are confused at reading, so a flip is necessary
+            image=vidcap.read()[1]
             frames[image_num,:,:,:]=image
         
         videos.append(frames)
@@ -147,3 +149,22 @@ def list2Tensor(tensors):
             
     else:
         raise TypeError("Unsupported type for to_image_list: {}".format(type(tensors)))
+
+def _tie_weights(output_embeddings, input_embeddings):
+        """ Tie input and output module weights
+        """
+        output_embeddings.weight = input_embeddings.weight
+
+        if getattr(output_embeddings, "bias", None) is not None:
+            output_embeddings.bias.data = nn.functional.pad(
+                output_embeddings.bias.data,
+                (0, output_embeddings.weight.shape[0] - output_embeddings.bias.shape[0],),
+                "constant",
+                0,
+            )
+        if hasattr(output_embeddings, "out_features") and hasattr(input_embeddings, "num_embeddings"):
+            output_embeddings.out_features = input_embeddings.num_embeddings
+            
+def fill_tensor_1D(T:torch.Tensor, i:int, val):
+    T[i]=val
+    return T

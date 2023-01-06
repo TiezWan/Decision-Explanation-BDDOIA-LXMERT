@@ -148,7 +148,7 @@ class DecExp:
         self.batches_per_epoch=int(np.ceil(self.trainset.__len__()/args.batch_size))
         print("Batches per epoch: ", self.batches_per_epoch)
         #t_total = int(self.batches_per_epoch * args.epochs)
-        t_total=(args.epochs+3)*self.trainset.total_words
+        t_total=2*(args.epochs+3)*self.trainset.total_words
         print("Total number of batches): %d" % t_total)
 
         if 'bert' in args.optim:
@@ -186,7 +186,7 @@ class DecExp:
             
             train_loader = DataLoader(
                 self.trainset, batch_size=args.batch_size,
-                shuffle=True, num_workers=args.num_workers,
+                shuffle=False, num_workers=args.num_workers,
                 drop_last=True, pin_memory=False) #Set pin_memory to True for faster training -> Leads to obnoxious unsolvable warnings
             #train_loader is a list of lists/tensors of batch_size elements (see what __getitem__ returns in DecExp_data): 
             #[[2,56,84,10,...], [aded54c2-98d4e31_2, jde9d9e7d-dgd232df_3, ...], [100, 100, ...],
@@ -202,6 +202,8 @@ class DecExp:
                 
                 # Rearranging labels, adding <SOS> and <EOS>
                 labels = [f'<SOS> {labels[0][i]} # {labels[1][i]}' for i in range(len(labels[0]))]
+                #labels= ["<SOS> The car accelerates # because the driver is going forward.", "<SOS> chain reacting destination building # booth indicates first obstacle keeping closer maintained passes alternating."]
+                #print(labels)
                 for i in range(len(labels)):
                     labels[i]=labels[i].replace(".", " .").replace(",", " ,")
                 
@@ -231,9 +233,9 @@ class DecExp:
                 #assert logit.size(dim=1) == labeldigits.size(dim=1) == LOGIT_ANSWER_LENGTH, 'output vector dimension does not fit the expected length (25)'
                 #assert text_logits.size(1) == self.model.ans_len
                 #text_logits=text_logits.cuda()
-                
+                  
                 #Creating labels for pair-wise loss function computation
-                prob_labels_list=[torch.zeros([text_logits_list[i].size(0), self.model.len_wordset]) for i in range(args.batch_size)]
+                prob_labels_list=[torch.zeros([text_logits_list[i].size(0), self.model.vocab_size]) for i in range(args.batch_size)]
                                 
                 for sentence in range(len(labels)):
                     words=labels[sentence].split(" ") 
@@ -251,27 +253,37 @@ class DecExp:
                 prob_labels=torch.cat(prob_labels_list, 0).cuda()
                 
                 # Shuffling
-                shufflevector=torch.randperm(text_logits.size(0))
-                text_logits=text_logits[shufflevector]
-                prob_labels=prob_labels[shufflevector]
+                #shufflevector=torch.randperm(text_logits.size(0))
+                #text_logits=text_logits[shufflevector]
+                #prob_labels=prob_labels[shufflevector]
                 total_loss=0
-                for backwardspass in range(text_logits.size(0)):
+                ###Checking that the training actually works
+                with open(args.output + "/train_predictions.log", 'a') as f:
+                    for i in range(text_logits.size(0)):
+                        str_pred=self.model.index2word[text_logits[i].tolist().index(torch.max(text_logits[i]))]+" : "+self.model.index2word[prob_labels[i].tolist().index(1.0)]
+                        f.write(str_pred)
+                        f.write("\n")
+                    f.write("\n")
+                            
+                #for backwardspass in range(text_logits.size(0)):
                     #l2_norm = sum([p.pow(2.0).sum() for p in self.model.parameters() if p.requires_grad])
-                    loss_unreduced = self.bce_loss(text_logits[backwardspass], prob_labels[backwardspass])
+                loss_unreduced = self.bce_loss(text_logits, prob_labels)
                     #print(f"loss={loss_unreduced}")
-                    loss= torch.mean(loss_unreduced) #+ args.l2reg * l2_norm
+                    
+                loss= torch.mean(loss_unreduced, 1) #+ args.l2reg * l2_norm
                     
                     #print("loss :", loss.item(), "\n")
                     #loss = loss * logit.size(1) #Removing the mean reduction of bce_loss to get the sum of all components
                                                 #Uncomment if the loss is chosen without specifying the reduction (defaults to mean)
-                    loss.backward(retain_graph=True)
+                for i in loss:
+                    i.backward(retain_graph=True)
                     nn.utils.clip_grad_norm_(self.model.parameters(), 5.)
                     self.optim.step()
                     self.optim.zero_grad()
                     #print(self.model.decoderlayer.linear1.weight)
-                    str_loss="loss: 10e-3 * {0:.3f}".format(loss.item()*1000)
-                    barloader.set_description(str_loss)
-                    temp_loss_hist.append(loss.item())
+                str_loss="loss: {0:.3f}".format(loss[-1].item())
+                barloader.set_description(str_loss)
+                temp_loss_hist.append(loss[-1].item())
                 
                 for indx,l in zip(idx, labeldigits.cpu().numpy()):
                     idx2ans[indx]=l #Make sure that imgid is in quotes to be used in DecExpEvaluate. idx2ans = {idx1:label1, ..., idxn:labeln}
@@ -293,7 +305,7 @@ class DecExp:
                 f.write(str_loss)
                 f.write("\n")
                 f.flush()
-            decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
+            #decexp.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
 
             #train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, actiontrain_acc=self.evaluate(self.trainset, self.sent) #Computes training accuracy
             train_accuracy, bitwise_train_accuracy = self.evaluate(self.trainset, self.sent) #Computes training accuracy
@@ -410,7 +422,7 @@ Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n".format(epoch, va
         nbequal=MAX_TEXT_ANSWER_LENGTH #number of words within each prediction that have to be equal to the label in order to classify as correct.
         eval_loader = DataLoader(
             dset, batch_size=args.batch_size,
-            shuffle=True, num_workers=args.num_workers,
+            shuffle=False, num_workers=args.num_workers,
             drop_last=True, pin_memory=False)
         print("Dataloader loaded")
         imgids, temp=self.predict(eval_loader, eval_batches, sents, dump)
@@ -418,6 +430,7 @@ Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n".format(epoch, va
         
         if args.save_predictions==True:
             with open(args.output + "/predictions.log", 'a') as f:
+                f.write("Start")
                 for idx in eval_answers.keys():
                     f.write(str(dset.idx2label[idx][0]))
                     f.write(", ")
@@ -425,6 +438,7 @@ Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n".format(epoch, va
                     f.write(", ")
                     f.write("prediction: "+str(eval_answers[idx]))
                     f.write("\n")
+                f.write("End \n \n")
         
         #get labels for the idx chosen by the dataloader from the dataset annotations
         labels={}
@@ -560,14 +574,14 @@ if __name__ == "__main__":
     #     print("cannot set start method to 'spawn'")
     #     sys.exit()
     # Build Class
-    args.img_num=1200
+    args.img_num=10
     args.train='train'
     args.valid='val'
     args.test=None
     args.batch_size=2
-    args.epochs=50
+    args.epochs=300
     #args.output='./snap/no_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8_feats100'
-    args.output='./snap/bdd100k/first_decoder_run_12_5_3_3_dec_4_1200samples'
+    args.output='./snap/bdd100k/12_5_3_3_enc-dec_dec_2_2samples_meanloss'
     args.lr=5e-5
     args.num_decoderlayers=1
     
@@ -584,7 +598,7 @@ if __name__ == "__main__":
     args.llayers=5
     args.xlayers=3
     args.rlayers=3
-    args.num_decoderlayers=4
+    args.num_decoderlayers=2
     args.l2reg=0.
     nso=8
     nsq=QUERY_LENGTH-nso

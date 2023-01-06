@@ -34,4 +34,21 @@ str_wordset=""
 for word in wordset:
     str_wordset+=word
     str_wordset+=" "
+
+with open("../input/bdd100k/wordset.txt", 'r') as f:
+    loaded_str_wordset=f.read()
+
+loaded_wordset=loaded_str_wordset.split(" ")
+
+print(f"loaded wordset length {len(loaded_wordset)}")
 pdb.set_trace()
+
+targets2wordset={}
+for word_nr in range(len(loaded_wordset)):
+    temp='0'*len(loaded_wordset)
+    temp[word_nr]=1
+    targets2wordset.update({''.join(str(i) for i in temp):loaded_wordset[word_nr]})
+
+pdb.set_trace()
+    
+    
