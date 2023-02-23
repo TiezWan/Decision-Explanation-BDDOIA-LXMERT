@@ -25,7 +25,8 @@ NBFRAMESAMPLES=6
 #REJECTED_FILES=['63a69964-61f539d6', '196fd10e-21e3fbdf', '572f3103-952eb72c', '10c0c72d-9892b105', '82bde0d8-0763a1c8', 
 #'9c2a17dc-f6ef9a8a', 'e1004bf2-458b8a61', '4c37c9df-0a397dc5', '29f27e14-5d7a5c95', 'abf68b89-3b76fa6a', '5c25d741-b75f339c', '5c59e4c0-5145a91c', '029e1042-d985bee1']
 
-#RANDOM_SEED=158466 #Chosen completely arbitrarily, but it should remain the same throughout a training run
+RANDOM_SEED=158467 #Chosen completely arbitrarily, but it should remain the same throughout a training run
+shuffledata=True
 
 LABELSJSON='BDD100k_subtasks_trainlabels.json'
 QUESTION_NR=4
@@ -49,23 +50,59 @@ class SubtaskDataset(Dataset):
         print("Loading dataset", split)
 
         #At the time of writing this, only a subset of the total dataset is downloaded, we keep only this
-        avail_data=[videoname.split(".")[0] for videoname in os.listdir(f"{BDD_DATA_ROOT}/{self.split}clips_downsampled_6fpv/")]
-
+        avail_data=os.listdir(f"{BDD_DATA_ROOT}/{self.split}clips_downsampled_6fpv_2sampled/")
+        
         #if args.dotrain==True: #No need to shuffle for evaluation
-        #    random.Random(RANDOM_SEED).shuffle(avail_data)
+        random.Random(RANDOM_SEED).shuffle(avail_data)
 
         subtaskslabels_raw=json.load(open(f"../input/bdd100k/BDD100k_subtasks_{self.split}labels.json"))
+        nb_folders=0
+        for clip_id in subtaskslabels_raw.keys():
+            nb_folders+=len(subtaskslabels_raw[clip_id])
         
         self.idx2label={}
-        i=0
-        for clip_id in subtaskslabels_raw.keys():
-            for (framekey, framelabel) in subtaskslabels_raw[clip_id].items():
-                #If the label has at least one non-None element
-                if any([framelabel[i]!=None for i in range(len(framelabel))]):
-                    #Converting to numpy array and then to tensor to retrieve nan (not possible from list directly)
-                    framelabel=torch.tensor(np.array(framelabel, dtype=float), dtype=torch.float)
-                    self.idx2label[i]=(framekey.split(".")[0], framelabel)
-                    i+=1
+        
+        if shuffledata==True:
+            ##Getting rid of empty (None) labels in subtaskslabels_raw
+            # for clip_id in subtaskslabels_raw.keys():
+            #     for (framekey, framelabel) in subtaskslabels_raw[clip_id].items():
+            #         #If the label has at least one non-None element
+            #         if any([framelabel[i]!=None for i in range(len(framelabel))]):
+            #             pass
+            #         else:
+            #             try:
+            #                 del subtaskslabels_raw[clip_id]
+            #             except: #If the key was already deleted in a previous pass
+            #                 pdb.set_trace()
+            
+            ##Creating new dict with shuffle
+            idxlist=[i for i in range(nb_folders)]
+            random.Random(RANDOM_SEED).shuffle(idxlist) #Possible indices, shuffled
+            
+            while len(idxlist)>0:
+                (framekey, framelabels)=subtaskslabels_raw.popitem()
+                #Flatten framelabels
+                framelabels=[item for sublist in framelabels.items() for item in sublist]
+                idx=idxlist.pop()
+                self.idx2label[idx]=(framelabels[0].split(".")[0], torch.tensor(np.array(framelabels[1], dtype=float), dtype=torch.float))
+                try: #Check for a second frame from the same video
+                    framelabels[2] #Throws exceptions if does not exist
+                    idx=idxlist.pop()
+                    self.idx2label[idx]=(framelabels[2].split(".")[0], torch.tensor(np.array(framelabels[3], dtype=float), dtype=torch.float))
+                    
+                except IndexError:
+                    pass
+        
+        elif shuffledata==False:
+            i=0
+            for clip_id in subtaskslabels_raw.keys():
+                for (framekey, framelabel) in subtaskslabels_raw[clip_id].items():
+                    #If the label has at least one non-None element
+                    if any([framelabel[k]!=None for k in range(len(framelabel))]):
+                        #Converting to numpy array and then to tensor to retrieve nan (not possible from list directly)
+                        framelabel=torch.tensor(np.array(framelabel, dtype=float), dtype=torch.float)
+                        self.idx2label[i]=(framekey.split(".")[0], framelabel)
+                        i+=1
         
         if (args.img_num==None or args.img_num>len(avail_data)):
             args.img_num=len(self.idx2label)
@@ -87,9 +124,8 @@ class SubtaskDataset(Dataset):
 
     def __getitem__(self, idx=int):
         
-        img_id="_".join(self.idx2label[idx][0].split("_")[:3])
+        img_id=self.idx2label[idx][0]
         frame_nr=int(self.idx2label[idx][0].split("_")[-1])
-        
         #itemframes=video2frames([BDD_DATA_ROOT+img_id+".mov"]) #list of frames
         
         #print('starting feature extraction')
@@ -100,15 +136,10 @@ class SubtaskDataset(Dataset):
         #print('finished feature extraction')
         #print(f'extraction time: {time.time()-timepre}')
         try:
-            img_data=np.load(f"{BDD_IMGFEAT_ROOT}/{self.split}clips_downsampled_6fpv/"+img_id+".npy", allow_pickle=True)[frame_nr]
+            img_data=np.load(f"{BDD_IMGFEAT_ROOT}/{self.split}clips_downsampled_6fpv_2sampled/"+img_id+".npy", allow_pickle=True)[0]
         except:
-            print(f"video to be removed: {img_id}")
+            print(f"Error while fetching sample {img_id}")
             pdb.set_trace()
-            print(img_id[-5:])
-            if (img_id.split("_")[-1]==img_id.split("_")[-2]) or (img_id.split("_")[-1]<img_id.split("_")[-2]):
-                os.remove(f"{BDD_DATA_ROOT}/{self.split}clips_downsampled_6fpv/"+img_id+".mov")
-                print("video_removed")
-            img_data=np.load(f"{BDD_IMGFEAT_ROOT}/{self.split}clips_downsampled_6fpv/"+"18285276-becaf072_10_14.npy", allow_pickle=True)
             
         
         #img_data is a 1-D array of n_frames dicts,

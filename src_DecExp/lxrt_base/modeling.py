@@ -141,10 +141,10 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     scores_copy=batch_tensor.clone() #creating a copy that will then be sent to cpu, to avoid sending original to cpu
     scores_copy.cpu()
     print(f"saving {stage}, {mode} for {imgids}, layer {layer_count}, sents {sents}")
-    #pdb.set_trace() #Do not remove this breakpoint
+    pdb.set_trace() #Do not remove this breakpoint
     
     for img in range(len(imgids)): #For each image in the batch
-        path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle_epoch_19/val_set_full/"+str(imgids[img])+'/'
+        path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+'/'
         if not os.path.isdir(path): #check if a folder for the original video name exists
             os.makedirs(path) #If not we initialize everything
             if batch_size==1:
@@ -164,7 +164,7 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     if stage=='attsc':
         if mode=="lang":
             for img in range(len(imgids)): #For each image in the batch
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle_epoch_19/val_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
@@ -174,7 +174,7 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
                     #np.save("test.npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
         elif mode=="visn":
             for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle_epoch_19/val_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
@@ -186,7 +186,7 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     elif stage=='ctxlay':
         if mode=='lang':
             for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle_epoch_19/val_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
@@ -197,7 +197,7 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     
         elif mode=='visn':
             for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle_epoch_19/val_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
@@ -208,7 +208,6 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
 
     else:
         print("Error while saving the heatmap, stage unrecognized. Must be 'attsc' or 'ctxlay'. Current: ", stage)
-
 
 
 ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
@@ -365,11 +364,11 @@ class BertEmbeddings(nn.Module):
         embeddings = words_embeddings + position_embeddings + token_type_embeddings
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
-        #print("BertEmbeddings size of output:", embeddings.size())
         return embeddings
 
 
-class BertAttention(nn.Module): 
+
+class BertAttention(nn.Module):
     def __init__(self, args, config, ctx_dim=None):
         super().__init__()
         if config.hidden_size % config.num_attention_heads != 0:
@@ -382,15 +381,11 @@ class BertAttention(nn.Module):
         self.batch_size=args.batch_size
         self.save_heatmap=args.save_heatmap
         self.xlayers=args.xlayers
-        
+
+
         # visual_dim = 2048
         if ctx_dim is None:
             ctx_dim =config.hidden_size
-        
-        self.tempquery = nn.Linear(config.hidden_size, self.all_head_size)
-        self.tempkey = nn.Linear(ctx_dim, self.all_head_size)
-        self.tempvalue = nn.Linear(ctx_dim, self.all_head_size)
-        
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.key = nn.Linear(ctx_dim, self.all_head_size)
         self.value = nn.Linear(ctx_dim, self.all_head_size)
@@ -398,138 +393,53 @@ class BertAttention(nn.Module):
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
 
 
-    def transpose_for_scores(self, x, temporalflag=False):
+    def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        #new_x_shape = [batchsize, num_frames, 100, 12, 64]
         x = x.view(*new_x_shape)
-        if len(x.size())==4:
-            return x.permute(0, 2, 1, 3)
-        elif len(x.size())==5:
-            if temporalflag:
-                return x.permute(0, 3, 2, 1, 4)
-            else:
-                return x.permute(0, 1, 3, 2, 4)
-            
-            
+        return x.permute(0, 2, 1, 3)
+
     def forward(self, imgid, layer_count, hidden_states, context, attention_mask=None, flagcross=0, sents=[None]):
         #mixed layers have size [batchsize, 100, 768] for the vision side
+        
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_layer = self.key(context)
+        mixed_value_layer = self.value(context)
 
-        if len(hidden_states.size())==3:
-            #print("\n--hidden_states", hidden_states)
-            mixed_query_layer = self.query(hidden_states)
-            #print("\n--mixed_query size ", mixed_query_layer.size())
-            mixed_key_layer = self.key(context) #
-            mixed_value_layer = self.value(context)
-            
-            query_layer = self.transpose_for_scores(mixed_query_layer)
-            #print("\n--query layer size ", query_layer.size())
-            key_layer = self.transpose_for_scores(mixed_key_layer) 
-            value_layer = self.transpose_for_scores(mixed_value_layer)
-            
-        ###If the dimensionality equals 4 (that is we process several frames) then we first
-        ###need to compute temporal attention
-        #mixed layers have size [batchsize, num_frames, 100, 768]
-        elif len(hidden_states.size())==4:
-            #print(f"tempkey: {self.tempkey.weight}")
-            #print("\n--hidden_states", hidden_states)
-            mixed_query_layer = self.tempquery(hidden_states)
-            #print("\n--mixed_query size ", mixed_query_layer.size())
-            mixed_key_layer = self.tempkey(context)
-            mixed_value_layer = self.tempvalue(context)
-
-            query_layer = self.transpose_for_scores(mixed_query_layer, temporalflag=True)
-            #print("\n--query layer size ", query_layer.size())
-            key_layer = self.transpose_for_scores(mixed_key_layer, temporalflag=True) 
-            value_layer = self.transpose_for_scores(mixed_value_layer, temporalflag=True)
-
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-
+        
         ##saving heatmaps        
         if attention_scores.size()==torch.Size([len(sents),self.num_attention_heads,QUERY_LENGTH+2,100]) and flagcross==1 and \
             self.save_heatmap==True:
             if layer_count==5:  
                 save_heatmap(attention_scores, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'attsc', 'lang', sents)
-
+      
         # if attention_scores.size()==torch.Size([len(sents),self.num_attention_heads,100,QUERY_LENGTH+2]) and flagcross==1 and \
         #     self.save_heatmap==True:
-        #     if layer_count==5:
+        #     if layer_count==5:  
         #         save_heatmap(attention_scores, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'attsc', 'visn', sents)
         #
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
         if attention_mask is not None:
             attention_scores = attention_scores + attention_mask
+
         # Normalize the attention scores to probabilities.
         attention_probs = nn.Softmax(dim=-1)(attention_scores)
-        #print("\n--attention_probs size ", attention_probs.size())
-        
+
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
-        if len(attention_probs.size())==4:
-            attention_probs = self.dropout(attention_probs)
+        attention_probs = self.dropout(attention_probs)
+
         context_layer = torch.matmul(attention_probs, value_layer)
-
-
-        ##saving heatmaps
-        #if context_layer.size()==torch.Size([len(sents),self.num_attention_heads,QUERY_LENGTH+2,64]) and flagcross==1 and \
-            #self.save_heatmap==True:
-            #save_heatmap(context_layer, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'ctxlay', 'lang', sents)
-
-        #if context_layer.size()==torch.Size([len(sents),self.num_attention_heads,100,64]) and flagcross==1 and \
-            #self.save_heatmap==True:
-            #save_heatmap(context_layer, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'ctxlay', 'visn', sents)
-        ##
-
-
-        ###If the dimensionality equals 4, then we already computed spatial attention
-        if len(context_layer.size())==4:
-            context_layer = context_layer.permute(0, 2, 1, 3).contiguous() 
-            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-            context_layer = context_layer.view(*new_context_layer_shape)
-            
-            return context_layer
-        
-
-        ###Otherwise we must do it now
-        if len(context_layer.size())==5:
-            context_layer = context_layer.permute(0, 3, 2, 1, 4).contiguous() 
-            ###Cast the tensors back in the embedding space to perform query/key/value projections
-            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-            context_layer = context_layer.view(*new_context_layer_shape)
-
-            mixed_query_layer = self.query(context_layer)
-            mixed_key_layer = self.key(context_layer)
-            mixed_value_layer = self.value(context_layer)
-            
-            #mixed layers have size [batchsize, num_frames, 100, 768]
-            query_layer = self.transpose_for_scores(mixed_query_layer)
-            #print("\n--query layer size ", query_layer.size())
-            key_layer = self.transpose_for_scores(mixed_key_layer)
-            value_layer = self.transpose_for_scores(mixed_value_layer)
-            # Take the dot product between "query" and "key" to get the raw attention scores.
-            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-            
-            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-            # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
-            if attention_mask is not None:
-                attention_scores = attention_scores + attention_mask
-            
-            # Normalize the attention scores to probabilities.
-            attention_probs = nn.Softmax(dim=-1)(attention_scores)
-            
-            # This is actually dropping out entire tokens to attend to, which might
-            # seem a bit unusual, but is taken from the original Transformer paper.
-            attention_probs = self.dropout(attention_probs)
-            context_layer = torch.matmul(attention_probs, value_layer)
-            
-            context_layer = context_layer.permute(0, 1, 3, 2, 4).contiguous() 
-            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-            context_layer = context_layer.view(*new_context_layer_shape)
-            
-            ###context layer has size [batchsize, num_frames, num_objs, hidden_size]
-            return context_layer
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        context_layer = context_layer.view(*new_context_layer_shape)
+        return context_layer
 
 
 class BertAttOutput(nn.Module):
@@ -543,10 +453,7 @@ class BertAttOutput(nn.Module):
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        #print("BertAttOutput size of output:", hidden_states.size())
         return hidden_states
-
-
 
 class BertCrossattLayer(nn.Module):
     def __init__(self, args, config):
@@ -555,13 +462,9 @@ class BertCrossattLayer(nn.Module):
         self.output = BertAttOutput(config)
 
     def forward(self, imgid, layer_count, input_tensor, ctx_tensor, ctx_att_mask=None, sents=[None]):
-        #print("\n------------------")
-
-        output = self.att(imgid, layer_count, input_tensor, ctx_tensor, ctx_att_mask, flagcross=1, sents=sents)
+        output = self.att(imgid, layer_count, input_tensor, ctx_tensor, ctx_att_mask,  flagcross=1, sents=sents)
         attention_output = self.output(output, input_tensor)
-        #print("\n------------------")
         return attention_output
-
 
 class BertSelfattLayer(nn.Module):
     def __init__(self, args, config):
@@ -618,19 +521,6 @@ class BertLayer(nn.Module):
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
-    
-class RelationalLayer(nn.Module):
-    def __init__(self, args, config):
-        super(RelationalLayer, self).__init__()
-        self.attention = BertSelfattLayer(args, config)
-        self.intermediate = BertIntermediate(config)
-        self.output = BertOutput(config)
-
-    def forward(self, hidden_states, attention_mask, sents=[None]):
-        attention_output = self.attention(hidden_states, attention_mask)
-        intermediate_output = self.intermediate(attention_output)
-        layer_output = self.output(intermediate_output, attention_output)
-        return layer_output
 
 
 """
@@ -638,6 +528,8 @@ class RelationalLayer(nn.Module):
       Above modules are copied from BERT (pytorch-transformer) with modifications.
 ---------------------------------------------------------------------------------------
 """
+
+
 class LXRTXLayer(nn.Module):
     def __init__(self, args, config):
         super().__init__()
@@ -645,8 +537,8 @@ class LXRTXLayer(nn.Module):
         self.visual_attention = BertCrossattLayer(args, config) 
 
         # Self-attention Layers
-        self.lang_self_att = BertSelfattLayer(args, config)
-        self.visn_self_att = BertSelfattLayer(args, config)
+        self.lang_self_att = BertSelfattLayer(args, config) 
+        self.visn_self_att = BertSelfattLayer(args, config) 
 
         # Intermediate and Output Layers (FFNs)
         self.lang_inter = BertIntermediate(config)
@@ -680,17 +572,14 @@ class LXRTXLayer(nn.Module):
                       visn_feats, visn_attention_mask, sents=[None]):
         lang_att_output = lang_feats
         visn_att_output = visn_feats
+
         lang_att_output, visn_att_output = self.cross_att(imgid, layer_count, lang_att_output, lang_attention_mask,
                                                           visn_att_output, visn_attention_mask, sents)
-        #print("Size of output (1): ", lang_att_output.size(), visn_att_output.size())
         lang_att_output, visn_att_output = self.self_att(lang_att_output, lang_attention_mask,
                                                          visn_att_output, visn_attention_mask, sents)
-        #print("Size of output (2): ", lang_att_output.size(), visn_att_output.size())
         lang_output, visn_output = self.output_fc(lang_att_output, visn_att_output)
-        #print("Size of output (3): ", lang_output.size(), visn_output.size())
 
         return lang_output, visn_output
-
 
 
 class VisualFeatEncoder(nn.Module):
@@ -719,8 +608,8 @@ class VisualFeatEncoder(nn.Module):
         output = (x + y) / 2
 
         output = self.dropout(output)
-        #print("Size of output of VisualFeatEncoder: ", output.size())
         return output
+
 
 
 class LXRTEncoder(nn.Module):
@@ -742,11 +631,11 @@ class LXRTEncoder(nn.Module):
         self.layer = nn.ModuleList(
             [BertLayer(args, config) for _ in range(self.num_l_layers)]
         )
-        self.r_layers = nn.ModuleList(
-            [RelationalLayer(args, config) for _ in range(self.num_r_layers)]
-        )
         self.x_layers = nn.ModuleList(
             [LXRTXLayer(args, config) for _ in range(self.num_x_layers)]
+        )
+        self.r_layers = nn.ModuleList(
+            [BertLayer(args, config) for _ in range(self.num_r_layers)]
         )
 
     def forward(self, imgid, lang_feats, lang_attention_mask,
@@ -764,10 +653,6 @@ class LXRTEncoder(nn.Module):
         # Run relational layers
         for layer_module in self.r_layers:
             visn_feats = layer_module(visn_feats, visn_attention_mask, sents)
-        ##Pool the data along the frames dimension
-        if len(visn_feats.size())==4:
-            visn_feats=torch.mean(visn_feats, dim=1) #Casting the spatio-temporal cube into a spatial matrix by taking the mean of all frames
-
 
         # Run cross-modality layers
         layer_count=0 #to save and plot heatmaps
@@ -785,27 +670,12 @@ class BertPooler(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
 
-    def forward(self, lang_output, visn_output, sents):
+    def forward(self, hidden_states):
         # We "pool" the model by simply taking the hidden state corresponding
-        # to the sum of:
-        # the mean of the tokens in lang_output except the first and last ones ([CLS] and [SEP])
-        # + the mean of the tokens in visn_output except the first and last one
-        
-        # for i in range(lang_output.size()[0]):
-        #     lang_output[i]/=torch.max(abs(lang_output[i]))
-        #     visn_output[i]/=torch.max(abs(visn_output[i]))
-        
-        mean_lang = torch.stack([torch.mean(lang_output[i, 1:(len(sents[i].split(" "))+1), :], axis=0) 
-                          for i in range(lang_output.size()[0])], axis=0)
-        mean_visn = torch.mean(visn_output, axis=1)
-        lang_output[:,0]=mean_lang #necessary for heatmap generation
-        visn_output[:,0]=mean_visn
-        
-        aggregate_token=visn_output[:,0]+lang_output[:,0]
-
-        pooled_output = self.dense(aggregate_token)
+        # to the first token.
+        first_token_tensor = hidden_states[:, 0]
+        pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pooled_output)
-        #print("BertPooler size of output:", pooled_output.size())
         return pooled_output
 
 
@@ -926,7 +796,6 @@ class BertPreTrainedModel(nn.Module):
         if isinstance(module, nn.Linear) and module.bias is not None:
             module.bias.data.zero_()
 
-
     @classmethod
     def from_pretrained(cls, args, pretrained_model_name_or_path, state_dict=None, cache_dir=None,
                         from_tf=False, *inputs, **kwargs):
@@ -1001,11 +870,6 @@ class BertPreTrainedModel(nn.Module):
         # Load config
         config_file = os.path.join(serialization_dir, CONFIG_NAME)
         config = BertConfig.from_json_file(config_file)
-        #Overriding the config file to specify the number of heads and intermediate layer width
-        config.num_attention_heads=args.heads
-        config.intermediate_size=4*64*args.heads
-        config.hidden_size=64*args.heads
-
         logger.info("Model config {}".format(config))
         # Instantiate model.
         model = cls(args, config, *inputs, **kwargs)
@@ -1053,9 +917,7 @@ class BertPreTrainedModel(nn.Module):
         start_prefix = ''
         if not hasattr(model, 'bert') and any(s.startswith('bert.') for s in state_dict.keys()):
             start_prefix = 'bert.'
-        
-        if args.heads==12:
-            load(model, prefix=start_prefix)
+        load(model, prefix=start_prefix)
         # if len(missing_keys) > 0:
         #     logger.info("Weights of {} not initialized from pretrained model: {}".format(
         #         model.__class__.__name__, missing_keys))
@@ -1068,9 +930,7 @@ class BertPreTrainedModel(nn.Module):
         return model
 
 
-
-
-class LXRTModel(BertPreTrainedModel): 
+class LXRTModel(BertPreTrainedModel):
     """LXRT Model."""
 
     def __init__(self, args, config):
@@ -1113,7 +973,7 @@ class LXRTModel(BertPreTrainedModel):
 
         # Positional Word Embeddings
         embedding_output = self.embeddings(input_ids, token_type_ids)
-        
+
         # Run LXRT backbone
         lang_feats, visn_feats = self.encoder(
             imgid,
@@ -1123,7 +983,7 @@ class LXRTModel(BertPreTrainedModel):
             sents=sents,
             visn_attention_mask=extended_visual_attention_mask)
         
-        pooled_output = self.pooler(lang_feats, visn_feats, sents)
+        pooled_output = self.pooler(lang_feats)
 
         return (lang_feats, visn_feats), pooled_output
 

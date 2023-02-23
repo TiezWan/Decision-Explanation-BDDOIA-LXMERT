@@ -64,11 +64,13 @@ class Subtask:
         #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempkey.weight.requires_grad=False
         #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempvalue.weight.requires_grad=False
 
+
         ###Otherwise, freeze everything and unfreeze specific layers
         # for param in self.model.parameters():
         #     param.requires_grad=False
-            ###And selectively unfreeze layers after this
-
+        # ###And selectively unfreeze layers after this
+        # self.model.logit_fc[0].weight.requires_grad=True #0 corresponds to the first Linear layer
+        # self.model.logit_fc[3].weight.requires_grad=True #3 corresponds to the second linear layer
 
         #Testing process
         if args.test==True:
@@ -138,16 +140,22 @@ class Subtask:
             print("epoch ", epoch, "/", args.epochs, "\n")
             idx2ans = {}
             temp_loss_hist=[]
-            
-            train_loader = DataLoader(
-                self.trainset, batch_size=args.batch_size,
-                shuffle=True, num_workers=args.num_workers,
-                drop_last=True, pin_memory=False) #Set pin_memory to True for faster training -> Leads to obnoxious unsolvable warnings
+            if args.save_heatmap==True:
+                train_loader = DataLoader(
+                    self.trainset, batch_size=args.batch_size,
+                    shuffle=False, num_workers=args.num_workers,
+                    drop_last=True, pin_memory=False)
+            else:
+                train_loader = DataLoader(
+                    self.trainset, batch_size=args.batch_size,
+                    shuffle=True, num_workers=args.num_workers,
+                    drop_last=True, pin_memory=False) #Set pin_memory to True for faster training -> Leads to obnoxious unsolvable warnings
             #train_loader is a list of lists/tensors of batch_size elements (see what __getitem__ returns in DecExp_data): 
             #[[2,56,84,10,...], [aded54c2-98d4e31_2, jde9d9e7d-dgd232df_3, ...], [100, 100, ...],
             #tensor([[[0.0000, 0.0000, 2.1567, ...], [0.0000, 0.0000, 0.0000, ...], ... ]]) of shape (1 x obj_num x 1024)
             #tensor([[[0.5985, 0.1576, 0.6792, 0.3128], [0.3612, 0.4612, 0.6210, 0.8215], ...]]) of shape (1 x obj_num x 4)
             #tensor([[0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,0., 1., 0., 0., 0., 1., 0.],...]])]
+            
             trainbatch=0
             barloader=tqdm(train_loader, total=self.batches_per_epoch)
             for batchdata in barloader:
@@ -171,8 +179,10 @@ class Subtask:
                 question_nr=[]
                 #question or counter-question
                 ques_appendix=[]
+                
                 for batch_item in range(args.batch_size):
-                    available_questions=[index for index,value in enumerate(prelabels[batch_item]) if ((value==0. or value==1.) and index%2==0)]
+                    #available_questions=[index for index,value in enumerate(prelabels[batch_item]) if ((value==0. or value==1.) and index%2==0)]
+                    available_questions=[0,4,6]#0 for redlights, 4 for greenlights, 6 for road signs
                     question_nr.append(random.choice(available_questions))
                     ques_appendix.append(random.choice([0,1]))
                     self.sent.append(random.choice(self.queries[self.question_types[question_nr[-1]+ques_appendix[-1]]]))
@@ -222,9 +232,17 @@ class Subtask:
             self.save('epoch_%d'% (epoch)) #Saves the weights for each epoch for later (re-)evaluation
 
             
-            train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, actiontrain_acc=self.evaluate(self.trainset, self.sent) #Computes training accuracy
-            log_str="\nTraining --- \n  Label-wise accuracy: Epoch {0}: {1} % \n  Bit-wise accuracy: Epoch {0}: {2} \n  Bit-wise F1-score: Epoch {0}: {3} \n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100., trainF1)
+            train_accuracy, bitwise_train_accuracy, trainloss, train_trace, trainF1, train_conf_mat=self.evaluate(self.trainset, self.sent) #Computes training accuracy
+            log_str="\nTraining --- \n  Label-wise accuracy: Epoch {0}: {1} % \n  Bit-wise accuracy: Epoch {0}: {2} \n  Bit-wise F1-score: Epoch {0}: {3} \n  Confusion matrix: Epoch {0}: {4}\n".format(epoch, train_accuracy*100., bitwise_train_accuracy*100., trainF1, train_conf_mat)
 
+            with open(args.output + "/trainhist.log", 'a') as f:
+                f.write("\nEpoch: ")
+                f.write(str(epoch))
+                f.write(f"\n training accuracy: {train_accuracy}")
+                f.write(f"\n training loss: {trainloss}")
+                f.write(f"\n training F1 score: {trainF1}")
+                f.write(f"\n training confusion matrix: {train_conf_mat}\n")
+                
             with open(args.output + "/traintrace.log", 'a') as f:
                 f.write(str(epoch))
                 f.write(": ")
@@ -233,7 +251,7 @@ class Subtask:
 
 
             if args.valid != "" and args.valid != None:
-                val_accuracy, bitwise_val_accuracy, val_loss, val_trace, valF1, actionval_acc=self.evaluate(self.validset, self.sent) #Compute validation accuracy
+                val_accuracy, bitwise_val_accuracy, val_loss, val_trace, valF1, val_conf_mat=self.evaluate(self.validset, self.sent) #Compute validation accuracy
                 self.valacc_hist[epoch]=val_accuracy #Save the validation accuracy from the current epoch for later plotting
                 self.val_loss_hist[epoch]=val_loss
                 self.bitwise_valacc_hist[epoch]=bitwise_val_accuracy
@@ -246,9 +264,9 @@ class Subtask:
                 if valF1 > best_F1:
                     best_F1=valF1
 
-                log_str += "Validation --- \n  Label-wise accuracy: \n    Epoch {0}: {1} %\n    Epoch {0}: Best {2} %\n  Bit-wise accuracy: \n    \
+                log_str += "Validation --- \n  Label-wise accuracy: \n    Epoch {0}: {1} %\n    Epoch {0}: Best {2} %\n  Bit-wise accuracy: \n\
     Epoch {0}: {3} %\n    Epoch {0} Best Bit-wise accuracy {4} %\n  Bit-wise F1-score: \n    Epoch {0}: {5} \n    Epoch {0}\
- Best Bit-wise F1-score {6} \n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100., valF1, best_F1)
+ Best Bit-wise F1-score {6} \n  Confusion matrix: {7} \n".format(epoch, val_accuracy*100., best_valid*100., bitwise_val_accuracy*100., best_bitwise_valid*100., valF1, best_F1, val_conf_mat)
             
                 with open(args.output + "/valhist.log", 'a') as f:
                     f.write(log_str)
@@ -305,12 +323,22 @@ class Subtask:
             #question or counter-question
             ques_appendix=[]
             for batch_item in range(args.batch_size):
-                available_questions=[0, 4, 6]
-                question_nr.append(random.choice(available_questions))
-                ques_appendix.append(random.choice([0,1]))
-                sents.append(random.choice(self.queries[self.question_types[question_nr[-1]+ques_appendix[-1]]]))
+                available_questions=[0,4,6] #0 for redlights, 4 for greenlights, 6 for road signs
+                if args.batch_size!=1:
+                    question_nr.append(random.choice(available_questions))
+                    ques_appendix.append(random.choice([0,1]))
+                    sents.append(random.choice(self.queries[self.question_types[question_nr[-1]+ques_appendix[-1]]]))
+                
+                elif args.batch_size==1:
+                    for i in available_questions:
+                        sents.append(random.choice(self.queries[self.question_types[i]])) #Question i
+                        #sents.append(random.choice(self.queries[self.question_types[i+1]])) #Counter-question i
             
-
+            if args.batch_size==1:
+                feats=feats.repeat(len(sents), 1, 1)
+                boxes=boxes.repeat(len(sents), 1, 1)
+                img_id=[img_id[0] for i in range(len(sents))]
+            
             with open(args.output + "/sentstrace.log", 'a') as f:
                 f.write(str(sents))
                 f.write("\n")
@@ -322,14 +350,26 @@ class Subtask:
             with torch.no_grad(): #Making sure we don't do any training here
                 feats, boxes = feats.cuda(), boxes.cuda()
                 logit = self.model(img_id, feats, boxes, sents)
-                label=nn.Sigmoid()(logit)
-                for index, l in zip(idx, label.cpu().numpy()):
-                    idx2anseval[index] = np.array(l)
                 
-                for index, qtype in zip(idx, [question_nr[i]+ques_appendix[i] for i in range(len(question_nr))]):
-                    idxtoquestype[index]=qtype
+                label=nn.Sigmoid()(logit)
+                if args.batch_size!=1:
+                    for index, l in zip(idx, label.cpu().numpy()):
+                        idx2anseval[index] = np.array(l)
+                else:
+                    idx2anseval[idx[0]]=label
+                
+                if args.batch_size!=1:
+                    for index, qtype in zip(idx, [question_nr[i]+ques_appendix[i] for i in range(len(question_nr))]):
+                        idxtoquestype[index]=[qtype]
+                elif args.batch_size==1:
+                    for index in idx:
+                        idxtoquestype[index]=available_questions
+                
             #if dump is not None:
             #    self.dump_result(imgid2ans, dump)
+        if args.dotrain==False: #In eval mode
+            args.output+="/eval_tasks_"
+            args.output+="_".join([str(i) for i in available_questions])
         return img_id, idx2anseval, idxtoquestype, sents
 
     def evaluate(self, dset, sents, dump=None):
@@ -346,10 +386,19 @@ class Subtask:
         score = 0.
         tolerance=0.5 #We accept a confidence level of 1-0.5=0.5, that is 50% (Binary classification)
         nbequal=LOGIT_ANSWER_LENGTH #number of bits within each prediction that have to be equal to the label in order to classify as correct.
-        eval_loader = DataLoader(
-            dset, batch_size=args.batch_size,
-            shuffle=True, num_workers=args.num_workers,
-            drop_last=True, pin_memory=False)
+        
+        if args.save_heatmap==True:
+            eval_loader = DataLoader(
+                dset, batch_size=args.batch_size,
+                shuffle=False, num_workers=args.num_workers,
+                drop_last=True, pin_memory=False)
+        
+        else:
+            eval_loader = DataLoader(
+                dset, batch_size=args.batch_size,
+                shuffle=True, num_workers=args.num_workers,
+                drop_last=True, pin_memory=False)
+            
         print("Dataloader loaded")
         imgids, temp, idxtoquestype, sents=self.predict(eval_loader, eval_batches, sents, dump)
         eval_answers.update(temp)
@@ -357,6 +406,8 @@ class Subtask:
         if args.save_predictions==True:
             with open(args.output + "/predictions.log", 'a') as f:
                 for idx in eval_answers.keys():
+                    f.write(", ".join(sents))
+                    f.write(",  ")
                     f.write(str(dset.idx2label[idx][0]))
                     f.write(", ")
                     f.write(str(dset.idx2label[idx][1]))
@@ -368,59 +419,76 @@ class Subtask:
         
         labels={}
         for indx in temp.keys():
-            labels[indx]=(np.expand_dims(np.array(dset.idx2label[indx][1][idxtoquestype[indx]]), 0))
+            try:
+                if args.batch_size!=1:
+                    labels[indx]=(np.expand_dims(np.array(dset.idx2label[indx][1][idxtoquestype[indx]]), 0))
+                elif args.batch_size==1:
+                    labels[indx]=np.array([dset.idx2label[indx][1][i] for i in idxtoquestype[indx]])
+            except:
+                pdb.set_trace()
+        
         
         del temp
-        trace=np.zeros(LOGIT_ANSWER_LENGTH) #Count position-wise errors over the dataset
-        fulllabel_score=0
-        actionlabel_score=0
+        trace=np.zeros(len(eval_answers[list(eval_answers.keys())[0]])) #Count position-wise errors over the dataset
+        fullques_score=0
         bitwise_score=0
         Falsepos=0
         Truepos=0
         Falseneg=0
+        Trueneg=0
         
         for indx in eval_answers.keys():
             temp=0
             tempactions=0
-            for bit in range(LOGIT_ANSWER_LENGTH):
+            for bit in range(len(eval_answers[indx])):
                 if eval_answers[indx][bit]>=labels[indx][bit]-tolerance and eval_answers[indx][bit]<labels[indx][bit]+tolerance:
                     bitwise_score+=1
                     temp+=1
                 else:
                     trace[bit]+=1 #Keeps track of bits that are incorrectly predicted
+                
                 Falsepos+=int(eval_answers[indx][bit]+0.5)*(1-int(labels[indx][bit]))
                 Truepos+=int(eval_answers[indx][bit]+0.5)*int(labels[indx][bit])
                 Falseneg+=(1-int(eval_answers[indx][bit]+0.5))*int(labels[indx][bit])
-
+                Trueneg+=(1-int(eval_answers[indx][bit]+0.5))*(1-int(labels[indx][bit]))
 
             #if np.allclose(eval_answers[indx],labels[indx], rtol=0, atol=tolerance):
                 #score+=1
-            self.val_loss[indx] = nn.BCELoss()(torch.tensor(eval_answers[indx], dtype=torch.float32), 
-                torch.tensor(labels[indx], dtype=torch.float32)).item()
+            target_shape=(torch.tensor(eval_answers[indx], dtype=torch.float32).shape[0],1) #labels is of shape [n,1] while answers is of shape [n]
 
-            if temp>=nbequal: #If a minimum number of bits correspond between prediction and annotation, score +=1
+            self.val_loss[indx] = nn.BCELoss()(torch.tensor(eval_answers[indx], dtype=torch.float32).reshape(target_shape).cuda(), 
+                torch.tensor(labels[indx], dtype=torch.float32).reshape(target_shape).cuda()).item()
+            # elif args.batch_size==1:
+            #     self.val_loss[indx] = nn.BCELoss()(torch.tensor(eval_answers[indx][:,0], dtype=torch.float32), 
+            #         torch.tensor(labels[indx], dtype=torch.float32).cuda()).item() #Batch_size==1 requires a squeeze in the answers array
+            
+            #if isinstance(idxtoquestype[indx], int):
+            #    fullques_score+=temp
+            if temp>=len(idxtoquestype[indx]): #If a minimum number of bits correspond between prediction and annotation, score +=1
                                 #NOT THE SAME AS ADDING 1 TO SCORE IF A BIT CORRESPONDS (i.e computing the % of correct bits overall)
-                fulllabel_score+=1
-
-        print(trace)
+                fullques_score+=1
+        
+        conf_mat=(Trueneg, Falsepos, Falseneg, Truepos)
+        #print(trace)
         listlosses=list(self.val_loss.values())
         avg_eval_loss=sum(listlosses)/len(listlosses)
-        actionlabel_acc=actionlabel_score/(len(eval_answers)*4)
-        label_acc=fulllabel_score/len(eval_answers)
-        bitwise_acc=bitwise_score/(len(eval_answers)*LOGIT_ANSWER_LENGTH)
+        #actionlabel_acc=actionlabel_score/(len(eval_answers)*4)
+        label_acc=fullques_score/len(eval_answers)
+        bitwise_acc=bitwise_score/(len(eval_answers)*len(eval_answers[list(eval_answers.keys())[0]]))
         try:
             F1score=Truepos/(Truepos+0.5*(Falsepos+Falseneg))
         except:
-            print(Truepos, Falsepos, Falseneg)
+            print(Falsepos, Truepos, Falseneg, Trueneg)
             F1score=1.
             pdb.set_trace()
         try:
             print("\nprecision: ", (Truepos/(Truepos+Falsepos)))
             print("\nrecall: ", (Truepos/(Truepos+Falseneg)))
-            print("Bitwise action accuracy: ", actionlabel_acc*100.)
+            #print("Bitwise action accuracy: ", actionlabel_acc*100.)
         except:
-            print("error while computing precision, recall or accuracy")    
-        return label_acc, bitwise_acc, avg_eval_loss, trace, F1score, actionlabel_acc
+            print("error while computing precision, recall or accuracy")
+            pdb.set_trace()
+        return label_acc, bitwise_acc, avg_eval_loss, trace, F1score, conf_mat
 
 
 
@@ -448,18 +516,19 @@ if __name__ == "__main__":
     args.train='train'
     args.valid='val'
     args.test=None
-    args.batch_size=8
+    args.batch_size=1 #Batch_size of 1 reserved for sending all queries to 1 image at a time
     args.epochs=40
     #args.output='./snap/no_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8_feats100'
-    args.output='./subtasks/snap_subtasks/bdd100k/12_9_5_5_bs8_mixed_tasks'
+    args.output='./subtasks/snap_subtasks/bdd100k/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle'
     args.lr=5e-5
-    
+     
     #Load subtask fine-tuned model weights. Note: It is different from loading LXMERT pre-trained weights.
-    args.load='./subtasks/snap_subtasks/bdd100k/12_9_5_5_bs8_mixed_tasks/epoch_20' 
+    args.load='./subtasks/snap_subtasks/bdd100k/12_9_5_5_bs8_mixed_tasks_5em5_corrected_pooler_shuffle/epoch_19' 
     
     #args.load_lxmert='./snap/model' #load LXMERT pre-trained weights
+    #args.from_scratch=True
     args.save_predictions=False
-    args.save_heatmap=True
+    args.save_heatmap=False
     args.num_workers=0
     
     args.dotrain=False #True: trains the model. False: Performs evaluation only
@@ -480,7 +549,7 @@ if __name__ == "__main__":
                 #with torch.no_grad():
                     #print("loading epoch", i)
                     #subtask.load('./snap/train_full_3h_3_3_3_x/epoch_'+str(i))
-                eval_label_accuracy, eval_bitwise_accuracy, avg_eval_loss, eval_trace, evalF1, action_acc=subtask.evaluate(subtask.validset, [])
+                eval_label_accuracy, eval_bitwise_accuracy, avg_eval_loss, eval_trace, evalF1, conf_mat=subtask.evaluate(subtask.validset, [])
                 #print("Train accuracy", train_accuracy*100., "Avg loss: ", avg_train_loss)
                 print("Val accuracy", eval_label_accuracy*100., "Avg loss: ", avg_eval_loss)
 
@@ -488,24 +557,31 @@ if __name__ == "__main__":
   Bit-wise F1-score: \n    Epoch {0}: {3} \n".format(i, eval_label_accuracy*100., eval_bitwise_accuracy*100., evalF1)
                 print(log_str)
 
+                if not os.path.exists(args.output):
+                    os.makedirs(args.output)
                 with open(args.output + "/eval_acc_loss.log", 'a') as f:
                         f.write("Model: ")
-                        f.write(args.load)
+                        if args.load!=None:
+                            f.write(args.load)
+                        elif args.load_lxmert!=None:
+                            f.write(args.load_lxmert)
                         #f.write("\nTrain accuracy: ")
                         #f.write(str(train_accuracy*100.))
                         #f.write(" Avg loss: ")
                         #f.write(str(avg_train_loss))
+                        f.write("\n")
+                        f.write(f"{args.valid} set")
                         f.write("\nEval label accuracy: ")
                         f.write(str(eval_label_accuracy*100.))
                         f.write("\nEval bitwise accuracy: ")
                         f.write(str(eval_bitwise_accuracy*100.))
                         f.write("\nEval bitwise F1-score: ")
                         f.write(str(evalF1))
-                        f.write("\nAction-wise accuracy ")
-                        f.write(str(action_acc))
+                        f.write("\nConfusion matrix")
+                        f.write(str(conf_mat))
                         f.write("\nAvg loss: ")
                         f.write(str(avg_eval_loss))
-                        f.write("\n\n")
+                        f.write("\n \n")
                         f.flush()
 
                 with open(args.output + "/evaltrace.log", 'a') as f:

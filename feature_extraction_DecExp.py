@@ -17,7 +17,7 @@ import time
 
 #sys.path.insert(0,"../vqa-maskrcnn-benchmark/")
 
-import cv2 
+import cv2
 import numpy as np
 import torch
 from maskrcnn_benchmark.config import cfg
@@ -26,31 +26,32 @@ from maskrcnn_benchmark.modeling.detector import build_detection_model
 from maskrcnn_benchmark.structures.image_list import to_image_list
 from maskrcnn_benchmark.utils.model_serialization import load_state_dict
 from mmf.utils.download import download
-from PIL import Image
+import matplotlib.pyplot as plt
 import pdb
 
 #torch.cuda.set_device('cuda:4')
 #print([torch.cuda.device_ids])
 
-def video2frames(videolist):
-        for video in videolist:
-            vidcap = cv2.VideoCapture(video)
-            num_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-            print(f"number of frames: {num_frames}")
-            v_w  = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))   # int `width`
-            v_h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # int `height`
-            videos=[]
-            frames=np.zeros([num_frames, v_h, v_w, 3])
+# def video2frames(videolist):
+#         for video in videolist:
+#             vidcap = cv2.VideoCapture(video)
+#             num_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+#             print(f"number of frames: {num_frames}")
+#             v_w  = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))   # int `width`
+#             v_h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # int `height`
+#             videos=[]
+#             frames=np.zeros([num_frames, v_h, v_w, 3])
 
-            for image_num in range(0, int(num_frames)):
-                image=cv2.flip(vidcap.read()[1], -1) #height and width are confused at reading, so a flip is necessary
-                frames[image_num,:,:,:]=image
+#             for image_num in range(0, int(num_frames)):
+#                 #image=cv2.flip(vidcap.read()[1], -1) #height and width are confused at reading, so a flip is necessary
+#                 image=vidcap.read()[1]
+#                 frames[image_num,:,:,:]=image
             
-            videos.append(frames)
+#             videos.append(frames)
             
-        vidcap.release()
-        cv2.destroyAllWindows()
-        return videos
+#         vidcap.release()
+#         cv2.destroyAllWindows()
+#         return videos
 
 class FeatureExtractor:
     MODEL_URL = {
@@ -70,18 +71,26 @@ class FeatureExtractor:
     MIN_SIZE = 800
 
     def __init__(self):
+        global split
         self.args = self.get_parser().parse_args()
 
         #self.data = [json.load(open(self.args.annotations_file1)), json.load(open(self.args.annotations_file2)), json.load(open(self.args.annotations_file3))]
 
         self.parts = [os.listdir(self.args.image_dir1), os.listdir(self.args.image_dir2), os.listdir(self.args.image_dir3)]
-        self.video_paths = [["input/bdd100k/valclips_downsampled_6fpv/"+ p for p in self.parts[1]]]
-        #self.video_paths.append(['input/bdd100k/images/100k/val/'+ p for p in self.parts[1]])
-        #self.video_paths.append(['input/bdd100k/images/100k/test/'+ p for p in self.parts[2]])
+        if split=="train":
+            self.folder_paths = [[f"input/bdd100k/trainclips_downsampled_6fpv_2sampled/"+ p for p in self.parts[0]]]
+        elif split=="val":
+            self.folder_paths = [[f"input/bdd100k/valclips_downsampled_6fpv_2sampled/"+ p for p in self.parts[1]]]
+        elif split=="test":
+            self.folder_paths = [[f"input/bdd100k/testclips_downsampled_6fpv_2sampled/"+ p for p in self.parts[2]]]
+        
+        
+        #self.folder_paths.append(['input/bdd100k/images/100k/val/'+ p for p in self.parts[1]])
+        #self.folder_paths.append(['input/bdd100k/images/100k/test/'+ p for p in self.parts[2]])
 
-        for set in range(len(self.video_paths)):
-            for image in self.video_paths[set]:
-                assert os.path.isfile(image)
+        for set in range(len(self.folder_paths)):
+            for folder in self.folder_paths[set]:
+                assert os.path.isdir(folder), f"{folder}"
         #self.image_dir = [[paths to train image 1, path to train image 2, ...], [paths to val image 1, path to val image 2, ...],[paths to test image 1, path to test image 2, ...]]
         self._try_downloading_necessities(self.args.model_name) #same
         self.detection_model = self._build_detection_model()
@@ -129,11 +138,11 @@ class FeatureExtractor:
             help="Number of features to extract.",
         )
         parser.add_argument(
-            "--output_folder", type=str, default="input/bdd100k/feature_output/trainclips_downsampled_6fpv", help="Output folder"
+            "--output_folder", type=str, default="input/bdd100k/feature_output/to_sort", help="Output folder"
         )
-        parser.add_argument("--image_dir1", type=str, default="input/bdd100k/trainclips_downsampled_6fpv", help="Image directory or file")
-        parser.add_argument("--image_dir2", type=str, default="input/bdd100k/valclips_downsampled_6fpv", help="Image directory or file")
-        parser.add_argument("--image_dir3", type=str, default="input/bdd100k/testclips_downsampled_6fpv", help="Image directory or file")
+        parser.add_argument("--image_dir1", type=str, default="input/bdd100k/trainclips_downsampled_6fpv_2sampled", help="Image directory or file")
+        parser.add_argument("--image_dir2", type=str, default="input/bdd100k/valclips_downsampled_6fpv_2sampled", help="Image directory or file")
+        parser.add_argument("--image_dir3", type=str, default="input/bdd100k/testclips_downsampled_6fpv_2sampled", help="Image directory or file")
         parser.add_argument("--annotations_file1", default="input/lastframe/train_25k_images_actions.json", type=str)
         parser.add_argument("--annotations_file2", default="input/lastframe/val_25k_images_actions.json", type=str)
         parser.add_argument("--annotations_file3", default="input/lastframe/test_25k_images_actions.json", type=str)
@@ -186,10 +195,10 @@ class FeatureExtractor:
 
         # IndexError: too many indices for array, grayscale images
         if len(im.shape) < 3:
-            im = np.repeat(im[:, :, np.newaxis], 3, axis=2)
+            im = np.repeat(im[:, :, np.newaxis], 3, axis=2).astype(np.float32)
 
         im = im[:, :, ::-1]  
-        im -= np.array([102.9801, 115.9465, 122.7717]) 
+        im -= np.array([102.9801, 115.9465, 122.7717]).astype(np.float32)
         im_shape = im.shape  
         im_height = im_shape[0]
         im_width = im_shape[1]
@@ -203,7 +212,7 @@ class FeatureExtractor:
         # If bigger, scale it down
         if np.round(im_scale * im_size_max) > self.MAX_SIZE:  
             im_scale = self.MAX_SIZE / im_size_max
-
+            
         im = cv2.resize(
             im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR
         )
@@ -301,10 +310,20 @@ class FeatureExtractor:
     def get_detectron_features_video(self, videoframes):
         img_tensor, im_scales, im_infos = [], [], []
         
-        for frame in videoframes:
-            #i+=1
-            #print("frame n°", i, "/", totalim, "\n")
-            im, im_scale, im_info = self._image_transform(frame)
+        if len(videoframes.shape)==4:
+            for frame in videoframes:
+                #i+=1
+                #print("frame n°", i, "/", totalim, "\n")
+                im, im_scale, im_info = self._image_transform(frame)
+                #im= numpy array of the image
+                #im_scale= scaling factor
+                #im_infos= dict containing height and width
+                
+                img_tensor.append(im) #list of pytorch tensors
+                im_scales.append(im_scale) #list of floats
+                im_infos.append(im_info) #list or dicts
+        else:
+            im, im_scale, im_info = self._image_transform(videoframes)
             #im= numpy array of the image
             #im_scale= scaling factor
             #im_infos= dict containing height and width
@@ -342,17 +361,16 @@ class FeatureExtractor:
         np.save(f"{output_dir}/{file_base_name}", feature)
 
     def extract_features(self):
+        global split
         reject_list=[]
         torch.cuda.empty_cache()
         print("Starting feature extraction \n")
         print(torch.cuda.get_device_properties(0).total_memory)
-        set=1
-        if set==0:
-            output_dir="input/bdd100k/feature_output/trainclips_downsampled_6fpv"
-        elif set==1:
-            output_dir="input/bdd100k/feature_output/valclips_downsampled_6fpv"
-        elif set==2:
-            output_dir="input/bdd100k/feature_output/testclips_downsampled_6fpv"
+        
+        output_dir=f"input/bdd100k/feature_output/{split}clips_downsampled_6fpv_2sampled"
+        if split not in ["train", "val", "test"]:
+            print("split must be in ['train', 'val', 'test']")
+            raise Exception
         #self.parts[set]
         #iterdata=iter(self.data[set].items()) #Load data for each set
         #for idx in range(len(self.data)):
@@ -360,52 +378,51 @@ class FeatureExtractor:
             #image_id=currdata[0] #Replace the id with the name 
             
             #image_ids.append(image_id) #if the current image wasn't read before, add it to the list of read images
-        if set==0:
-            nbsplits=9881
-        elif set==1:
-            nbsplits=2500
-        elif set==2:
-            nbsplits=5000
         
-        nbvideos=len(self.video_paths[0])
-        splitlen=int((nbvideos/nbsplits))
+        nbfolders=len(self.folder_paths[0]) #Leave the 0 as the choice of set is already done in init
+        #splitlen=int((nbfolders/nbsplits))
 
-        #splits=[self.video_paths[set][(i*splitlen):((i+1)*splitlen)] for i in range(nbsplits)]
+        #splits=[self.folder_paths[set][(i*splitlen):((i+1)*splitlen)] for i in range(nbsplits)]
 
         # img_data=self.feature_extractor.extract_features(itemframes, img_id)
+        
+        for i in range(nbfolders):
+            print(f"\nfolder n° {i+1} / {nbfolders}")
+            for sample in os.listdir(self.folder_paths[0][i]):
+                sample=self.folder_paths[0][i]+"/"+sample
+                print(sample)
+                print(f"max allocated memory: {torch.cuda.memory_allocated()}")
+                time_pre=time.time()
+                vid_id=sample.split("/")[-1].split(".")[0] #Same, leave the 0 here
+                if os.path.isfile(output_dir+"/"+vid_id+".npy"):
+                    print(f"file {vid_id}.npy already exists")
+                    continue
 
-        for i in range(nbvideos):
-            print(f"max allocated memory: {torch.cuda.memory_allocated()}")
-            time_pre=time.time()
-            print(f"video n° {i+1} / {nbvideos}\n")
-            vid_id=self.video_paths[0][i].split("/")[-1].split(".")[0]
-            if os.path.isfile(output_dir+"/"+vid_id+".npy"):
-               print(f"file {vid_id}.npy already exists")
-               continue
-    
-            frames=video2frames([self.video_paths[0][i]])
-            
-            if len(frames[0])!=0:
-                features, infos = self.get_detectron_features_video(frames[0])
-            
+                frame_nb=vid_id.split("_")[-1]
                 
-                print("7 "+str(torch.cuda.memory_allocated()))
+                ###Following 2 lines are used when extracting frames from videos
+                #frames=video2frames([self.folder_paths[0][i]]) #Again, leave the 0
+                #frames is a list of [frame_nb, width, height, 3] numpy arrays
+                
+                frame=plt.imread(sample).astype(np.float32)
+                
+                features, infos = self.get_detectron_features_video(frame)
+
                 #features_new = {}
                 features_list = []
                 #features_all = []
                 m=0
-                for i in range(len(features)):
+                for j in range(len(features)):
                     features_new = {}
-                    features_new['img_id'] = vid_id+"_frame_"+str(i)
-                    features_new['features'] = features[i].cpu()
-                    features_new.update(infos[i])
+                    features_new['img_id'] = vid_id+"_frame_"+str(j)
+                    features_new['features'] = features[j].cpu()
+                    features_new.update(infos[j])
                     features_list.append(features_new)
                         
                 print('saving')
                 np.save(f"{output_dir}/{vid_id}.npy", features_list, allow_pickle=True)
                 print(time.time()-time_pre)
-            else:
-                reject_list.append(vid_id)
+                
         print(reject_list)
                 
 
@@ -434,5 +451,6 @@ class FeatureExtractor:
 
 
 if __name__ == "__main__":
+    split="test"
     feature_extractor = FeatureExtractor()
     feature_extractor.extract_features()

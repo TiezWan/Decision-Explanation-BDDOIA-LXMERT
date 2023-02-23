@@ -1,4 +1,4 @@
-# coding=utf-8
+ # coding=utf-8
 # Copyright 2019 project LXRT.
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
@@ -18,11 +18,10 @@
 import os
 
 import torch
-import pdb
 import torch.nn as nn
 
 from lxrt.tokenization import BertTokenizer
-from lxrt.modeling import LXRTFeatureExtraction as VisualBertForLXRFeature, VISUAL_CONFIG, BertConfig
+from lxrt.modeling import LXRTFeatureExtraction as VisualBertForLXRFeature, VISUAL_CONFIG
 
 
 class InputFeatures(object):
@@ -36,6 +35,7 @@ class InputFeatures(object):
 
 def convert_sents_to_features(sents, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
+
     features = []
     for (i, sent) in enumerate(sents):
         tokens_a = tokenizer.tokenize(sent.strip())
@@ -80,7 +80,6 @@ def set_visual_config(args):
 class LXRTEncoder(nn.Module):
     def __init__(self, args, max_seq_length, mode='x'):
         super().__init__()
-        self.nbheads=args.heads
         self.max_seq_length = max_seq_length
         set_visual_config(args)
 
@@ -91,7 +90,7 @@ class LXRTEncoder(nn.Module):
         )
 
         # Build LXRT Model
-        self.model = VisualBertForLXRFeature.from_pretrained(args,
+        self.model = VisualBertForLXRFeature.from_pretrained(args, 
             "bert-base-uncased",
             mode=mode
         )
@@ -105,12 +104,12 @@ class LXRTEncoder(nn.Module):
 
     @property
     def dim(self):
-        return 64*self.nbheads
+        return 768
 
     def forward(self, imgid, sents, feats, visual_attention_mask=None):
         train_features = convert_sents_to_features(
             sents, self.max_seq_length, self.tokenizer)
-        
+
         input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long).cuda()
         input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long).cuda()
         segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long).cuda()
@@ -152,7 +151,6 @@ class LXRTEncoder(nn.Module):
         # Load weights to model
         self.model.load_state_dict(state_dict, strict=False)
         print("Pretrain weights successfully loaded")
-
 
 
 

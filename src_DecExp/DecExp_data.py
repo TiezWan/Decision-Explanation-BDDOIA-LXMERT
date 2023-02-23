@@ -26,7 +26,7 @@ WORDSET_ROOT='../input/bdd100k/wordset.txt'
 #REJECTED_FILES=['63a69964-61f539d6', '196fd10e-21e3fbdf', '572f3103-952eb72c', '10c0c72d-9892b105', '82bde0d8-0763a1c8', 
 #'9c2a17dc-f6ef9a8a', 'e1004bf2-458b8a61', '4c37c9df-0a397dc5', '29f27e14-5d7a5c95', 'abf68b89-3b76fa6a', '5c25d741-b75f339c', '5c59e4c0-5145a91c', '029e1042-d985bee1']
 
-RANDOM_SEED=158466 #Chosen completely arbitrarily, but it should remain the same throughout a training run
+#RANDOM_SEED=158466 #Chosen completely arbitrarily, but it should remain the same throughout a training run
 
 
 # SPLIT2JSON = {

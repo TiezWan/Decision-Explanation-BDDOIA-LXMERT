@@ -14,11 +14,9 @@ import random
 
 from param import args
 from pretrain.qa_answer_table import load_lxmert_qa
-from DecExp_model import DecExpModel, LOGIT_ANSWER_LENGTH, QUERY_LENGTH, MAX_TEXT_ANSWER_LENGTH
+from DecExp_model import DecExpModel, SUBTASKS_ANSWER_LENGTH, DEC_ANSWER_LENGTH, QUERY_LENGTH
 from DecExp_data import DecExpDataset
 from lxrt.optimization import BertAdam
-
-LOSSRATIODEC2EXP=5.
 
 import warnings
 warnings.filterwarnings("ignore") #Attempts to ignore deprecated warnings from Pytorch, as those haven't been fixed in this torch version
@@ -72,6 +70,7 @@ class DecExp:
                         label2ans=self.train_tuple.dataset.label2ans)
         if args.load is not None: #fine-tuned weights from previous run
             self.load(args.load)
+        
         ###Selectively freeze layers:
         # for rlayer in range(args.rlayers):
         #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempquery.weight.requires_grad=False
@@ -79,9 +78,11 @@ class DecExp:
         #     self.model.lxrt_encoder.model.bert.encoder.r_layers[rlayer].attention.self.tempvalue.weight.requires_grad=False
 
         ###Otherwise, freeze everything and unfreeze specific layers
-        # for param in self.model.parameters():
-        #     param.requires_grad=False
+        for param in self.model.parameters():
+            print(param)
+            param.requires_grad=False
             ###And selectively unfreeze layers after this
+        pdb.set_trace()
 
 
         #Testing process
@@ -574,22 +575,22 @@ if __name__ == "__main__":
     #     print("cannot set start method to 'spawn'")
     #     sys.exit()
     # Build Class
-    args.img_num=10
+    args.img_num=50
     args.train='train'
     args.valid='val'
     args.test=None
-    args.batch_size=2
-    args.epochs=300
+    args.batch_size=8
+    args.epochs=50
     #args.output='./snap/no_clweight_reg_0p0003_train_5000_12h_3_3_3_bs8_feats100'
-    args.output='./snap/bdd100k/12_5_3_3_enc-dec_dec_2_2samples_meanloss'
+    args.output='./snap/bdd100k/from_12_9_5_5_bs8_mixed_tasks_epoch20_anshead_post_enc'
     args.lr=5e-5
     args.num_decoderlayers=1
     
     #Load decexp fine-tuned model weights. Note: It is different from loading LXMERT pre-trained weights.
-    #args.load='./snap/lastframe/x_varqueries_meanlvpool_train_all_12h_9_4_5_bs8/epoch_2' 
+    args.load='./subtasks/snap_subtasks/bdd100k/12_9_5_5_bs8_mixed_tasks/epoch_20/' 
     
-    args.load_lxmert='./snap/model' #load LXMERT pre-trained weights
-    args.save_predictions=True
+    #args.load_lxmert='./snap/model' #load LXMERT pre-trained weights
+    args.save_predictions=False
     args.save_heatmap=False
     args.num_workers=0
     
