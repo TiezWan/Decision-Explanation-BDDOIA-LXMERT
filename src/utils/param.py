@@ -39,16 +39,24 @@ def parse_args():
     parser.add_argument('--epochs', type=int, default=40)
     parser.add_argument('--samples_num', type=int, default=None)
     parser.add_argument('--seed', type=int, default=9595, help='random seed')
-
+    parser.add_argument("--savePredictions", dest='save_predictions', action='store_true')
     # Debugging
-    parser.add_argument('--output', type=str, default='/root/Documents/xISVQA/output') # ! Default for debug
-    parser.add_argument('--input', type=str, default='/root/Documents/xISVQA/input/bdd100k') # ! Default for debug
+    parser.add_argument('--output', type=str, default='./output') 
+    parser.add_argument('--input', type=str, default='./input/bdd100k') 
+    parser.add_argument('--heatmap_savepath', type=str, default='./output/visualization_images')
+    parser.add_argument('--heatmap_labels', nargs='+', default=["bdd100k_heatmaps_testlabels_redlights.json",
+                                                             "bdd100k_heatmaps_testlabels_greenlights.json",
+                                                             "bdd100k_heatmaps_testlabels_roadsigns.json"])
+    
     # ? parser.add_argument("--fast", action='store_const', default=False, const=True)
     # ? parser.add_argument("--tiny", action='store_const', default=False, const=True)
     # ? parser.add_argument("--tqdm", action='store_const', default=False, const=True)
-    parser.add_argument("--saveHeatmap", dest='save_heatmap', action='store_true')
-    parser.add_argument("--savePredictions", dest='save_predictions', action='store_true')
 
+    # Heatmap visualization parameters
+    parser.add_argument("--saveHeatmap", dest='save_heatmap', action='store_true', default=False)
+    parser.add_argument("--plotHeatmap", dest='plot_heatmap', action='store_true', default=True)
+    parser.add_argument("--eps_DBSCAN", dest='eps_dbscan', default=0.125, type=float, help='Clustering parameters')
+    parser.add_argument("--Cluster_MaxLength", dest='cluster_lenth', default=35, type=float, help='The allowed maximum number interest objects in a cluster')
     # Model Loading
     parser.add_argument('--load', type=str, default=None, help='Load specified weights, usually the fine-tuned weights for our task for testing.')
     parser.add_argument('--loadLxmert', dest='load_lxmert', type=str, default=None, help='Load pre-trained weights given by LXMERT.')
@@ -62,9 +70,10 @@ def parse_args():
     # LXRT Model Config
     # Note: LXRT = L, X, R (three encoders), Transformer
     parser.add_argument("--llayers", default=9, type=int, help='Number of Language layers')
-    parser.add_argument("--xlayers", default=5, type=int, help='Number of Cross-Modality layers.')
-    parser.add_argument("--rlayers", default=5, type=int, help='Number of object Relationship layers.')
-    parser.add_argument("--heads", default=12, type=int, help='Number of attention heads')
+    parser.add_argument("--xlayers", default=5, type=int, help='Number of Cross-Modality layers')
+    parser.add_argument("--rlayers", default=5, type=int, help='Number of object Relationship layers')
+    parser.add_argument("--num_heads", dest='heads', default=12, type=int, help='Number of attention heads')
+    parser.add_argument("--num_objects", dest='objects', default=100, type=int, help='Number of bounding boxes object')
     # ? parser.add_argument("--num_decoderlayers", default=3, type=int, help='Number of layers in the decoder')
 
     # LXMERT Pre-training Config

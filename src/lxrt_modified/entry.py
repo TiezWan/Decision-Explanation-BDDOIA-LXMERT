@@ -36,6 +36,7 @@ class InputFeatures(object):
 
 def convert_sents_to_features(sents, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
+
     features = []
     for (i, sent) in enumerate(sents):
         tokens_a = tokenizer.tokenize(sent.strip())
@@ -83,7 +84,7 @@ class LXRTEncoder(nn.Module):
         self.nbheads=args.heads
         self.max_seq_length = max_seq_length
         set_visual_config(args)
-
+        self.attention_scores = None
         # Using the bert tokenizer
         self.tokenizer = BertTokenizer.from_pretrained(
             "bert-base-uncased",
@@ -110,7 +111,7 @@ class LXRTEncoder(nn.Module):
     def forward(self, imgid, sents, feats, visual_attention_mask=None):
         train_features = convert_sents_to_features(
             sents, self.max_seq_length, self.tokenizer)
-        
+
         input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long).cuda()
         input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long).cuda()
         segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long).cuda()
@@ -118,6 +119,7 @@ class LXRTEncoder(nn.Module):
         output = self.model(imgid, input_ids, sents, segment_ids, input_mask,
                             visual_feats=feats, #feats=(feats,boxes) from DecExp
                             visual_attention_mask=visual_attention_mask)
+        self.attention_scores = self.model.attention_scores
         return output
 
     def save(self, path):
@@ -152,7 +154,6 @@ class LXRTEncoder(nn.Module):
         # Load weights to model
         self.model.load_state_dict(state_dict, strict=False)
         print("Pretrain weights successfully loaded")
-
 
 
 

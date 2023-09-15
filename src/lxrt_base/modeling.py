@@ -138,44 +138,40 @@ class GeLU(nn.Module):
 def swish(x):
     return x * torch.sigmoid(x)
 
-def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads, stage, mode, sents=[None]):
+"""
+def save_heatmap(batch_tensor, imgids, layer_count, nbheads, stage, mode, sents=[None]):
     scores_copy=batch_tensor.clone() #creating a copy that will then be sent to cpu, to avoid sending original to cpu
     scores_copy.cpu()
-    print(f"saving {stage}, {mode} for {imgids}, layer {layer_count}, sents {sents}")
+    # layer_count is 5
+    print(f"saving {stage}, {mode} for {imgids}, layer {layer_count}")
     #pdb.set_trace() #Do not remove this breakpoint
     
     for img in range(len(imgids)): #For each image in the batch
-        path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_benchmark_lxmert_epoch_17/test_set_full/"+str(imgids[img])+'/'
+        path=".src/heatmap_visualization/heatmap_testset/"+str(imgids[img])+'/'
+        #path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+'/'
         if not os.path.isdir(path): #check if a folder for the original video name exists
             os.makedirs(path) #If not we initialize everything
-            if batch_size==1:
-                for i, sent in enumerate(sents):
-                    for layer in range(xlayers):
-                        os.makedirs(path+f'sent{i}/'+'attention_scores/lang/layer_'+str(layer+1))
-                        os.makedirs(path+f'sent{i}/'+'attention_scores/visn/layer_'+str(layer+1))
-                        os.makedirs(path+f'sent{i}/'+'context_layer/lang/layer_'+str(layer+1))
-                        os.makedirs(path+f'sent{i}/'+'context_layer/visn/layer_'+str(layer+1))
-            else:
-                for layer in range(xlayers):
-                    os.makedirs(path+'attention_scores/lang/layer_'+str(layer+1))
-                    os.makedirs(path+'attention_scores/visn/layer_'+str(layer+1))
-                    os.makedirs(path+'context_layer/lang/layer_'+str(layer+1))
-                    os.makedirs(path+'context_layer/visn/layer_'+str(layer+1))
-    
+        os.makedirs(path+'attention_scores/') # make folder to save attention scores 
+
+
+    # Only attentions score from language branch need to be heatmap visualized
     if stage=='attsc':
         if mode=="lang":
             for img in range(len(imgids)): #For each image in the batch
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_benchmark_lxmert_epoch_17/test_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path=".src/heatmap_visualization/heatmap_testset/"+str(imgids[img])+'/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
                 for head in range(nbheads):
-                    np.save(path+"attention_scores/lang/layer_"+str(layer_count)+"/"+str(imgids[img])+ \
-                    "_attsc_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
+                    # save each head attention scores from 5th language mode of xlayer
+                    np.save(path+"attention_scores/"+str(imgids[img])+ "_attsc_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
                     #np.save("test.npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
+        else:
+            print("Error while saving the heatmap, mode unrecognized. Must be 'lang'. Current: ", mode)
+        '''            
         elif mode=="visn":
             for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_benchmark_lxmert_epoch_17/test_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
@@ -187,7 +183,7 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     elif stage=='ctxlay':
         if mode=='lang':
             for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_benchmark_lxmert_epoch_17/test_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
@@ -198,17 +194,18 @@ def save_heatmap(batch_tensor, imgids, layer_count, xlayers, batch_size, nbheads
     
         elif mode=='visn':
             for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/12_9_5_5_bs8_mixed_benchmark_lxmert_epoch_17/test_set_full/"+str(imgids[img])+f'/sent{img}/'
+                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
                 if not os.path.exists(f"{path}sents.txt"):
                     with open(f"{path}sents.txt", 'w') as f:
                         f.write(sents[img])
                 for head in range(nbheads):
                     np.save(path+'context_layer/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
                     "_ctxlay_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-    
+        '''
 
     else:
-        print("Error while saving the heatmap, stage unrecognized. Must be 'attsc' or 'ctxlay'. Current: ", stage)
+        print("Error while saving the heatmap, stage unrecognized. Must be 'attsc'. Current: ", stage)
+"""
 
 
 ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
@@ -379,10 +376,10 @@ class BertAttention(nn.Module):
         self.num_attention_heads = config.num_attention_heads
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
-        self.batch_size=args.batch_size
-        self.save_heatmap=args.save_heatmap
-        self.xlayers=args.xlayers
-
+        self.batch_size = args.batch_size
+        self.save_heatmap = args.save_heatmap
+        self.xlayers = args.xlayers
+        self.attention_scores = None
 
         # visual_dim = 2048
         if ctx_dim is None:
@@ -417,8 +414,10 @@ class BertAttention(nn.Module):
         if attention_scores.size()==torch.Size([len(sents),self.num_attention_heads,QUERY_LENGTH+2,100]) and flagcross==1 and \
             self.save_heatmap==True:
             if layer_count==5:  
-                save_heatmap(attention_scores, imgid, layer_count, self.xlayers, self.batch_size, self.num_attention_heads, 'attsc', 'lang', sents)
-      
+                #save_heatmap(attention_scores, imgid, layer_count, self.num_attention_heads, 'attsc', 'lang', sents)
+                self.attention_scores = attention_scores
+            else:
+                self.attention_scores = None
         # if attention_scores.size()==torch.Size([len(sents),self.num_attention_heads,100,QUERY_LENGTH+2]) and flagcross==1 and \
         #     self.save_heatmap==True:
         #     if layer_count==5:  
@@ -547,6 +546,9 @@ class LXRTXLayer(nn.Module):
         self.visn_inter = BertIntermediate(config)
         self.visn_output = BertOutput(config)
 
+        # Attention scores
+        self.attention_scores = None
+
     def cross_att(self, imgid, layer_count, lang_input, lang_attention_mask, visn_input, visn_attention_mask, sents=[None]):
         # Cross Attention
         lang_att_output = self.visual_attention(imgid, layer_count, lang_input, visn_input, ctx_att_mask=visn_attention_mask, sents=sents)
@@ -574,6 +576,7 @@ class LXRTXLayer(nn.Module):
         lang_att_output = lang_feats
         visn_att_output = visn_feats
 
+        self.attention_scores  = self.visual_attention.att.attention_scores
         lang_att_output, visn_att_output = self.cross_att(imgid, layer_count, lang_att_output, lang_attention_mask,
                                                           visn_att_output, visn_attention_mask, sents)
         lang_att_output, visn_att_output = self.self_att(lang_att_output, lang_attention_mask,
@@ -627,6 +630,8 @@ class LXRTEncoder(nn.Module):
         print("LXRT encoder with %d l_layers, %d x_layers, and %d r_layers." %
               (self.num_l_layers, self.num_x_layers, self.num_r_layers))
 
+        # Attention scores
+        self.attention_scores = None
         # Layers
         # Using self.layer instead of self.l_layer to support loading BERT weights.
         self.layer = nn.ModuleList(
@@ -661,7 +666,8 @@ class LXRTEncoder(nn.Module):
             layer_count+=1
             lang_feats, visn_feats = layer_module(imgid, layer_count, lang_feats, lang_attention_mask,
                                                   visn_feats, visn_attention_mask, sents)
-
+            if layer_count == 5 and layer_module.attention_scores is not None:
+                self.attention_scores = layer_module.attention_scores
         return lang_feats, visn_feats
 
 
@@ -941,6 +947,7 @@ class LXRTModel(BertPreTrainedModel):
         self.encoder = LXRTEncoder(args, config)
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
+        self.attention_scores = None
 
     def forward(self, imgid, input_ids, sents=[None], token_type_ids=None, attention_mask=None,
                 visual_feats=None, visual_attention_mask=None):
@@ -983,6 +990,9 @@ class LXRTModel(BertPreTrainedModel):
             visn_feats=visual_feats,
             sents=sents,
             visn_attention_mask=extended_visual_attention_mask)
+        
+        # Obtain attention scores for heatmap
+        self.attention_scores = self.encoder.attention_scores
         
         pooled_output = self.pooler(lang_feats)
 
@@ -1106,12 +1116,15 @@ class LXRTFeatureExtraction(BertPreTrainedModel):
         self.bert = LXRTModel(args, config)
         self.mode = mode
         self.apply(self.init_bert_weights)
+        self.attention_scores = None
 
     def forward(self, imgid, input_ids, sents=[None], token_type_ids=None, attention_mask=None, visual_feats=None,
                 visual_attention_mask=None):
         feat_seq, pooled_output = self.bert(imgid, input_ids, sents, token_type_ids, attention_mask,
                                             visual_feats=visual_feats,
                                             visual_attention_mask=visual_attention_mask)
+        # Obtain attention scores for heatmap
+        self.attention_scores = self.bert.attention_scores        
         if 'x' == self.mode:
             return pooled_output
         elif 'x' in self.mode and ('l' in self.mode or 'r' in self.mode):

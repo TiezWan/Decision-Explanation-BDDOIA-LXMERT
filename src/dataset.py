@@ -1,6 +1,7 @@
 import os, json, random, logging, pdb
 import numpy as np
 import torch
+import torch.utils.data
 from torch import Tensor
 from typing import Tuple
 
@@ -15,8 +16,19 @@ class Dataset(torch.utils.data.Dataset):
         logger.info(f"Loading dataset for {self.file_idx}...")
 
         # Get raw data
-        avail_data = os.listdir(f"{args.input}/{self.file_idx}clips_downsampled_6fpv_2sampled/")
-        raw_data = json.load(open(f"{args.input}/BDD100k_subtasks_{self.file_idx}labels.json"))
+        if self.file_idx == "train" or self.file_idx == "val":
+            avail_data = os.listdir(f"{args.input}/{self.file_idx}clips_downsampled_6fpv_2sampled/")
+            raw_data = json.load(open(f"{args.input}/BDD100k_subtasks_{self.file_idx}labels_new.json"))
+        elif self.file_idx == "test":
+            if args.save_heatmap:
+                avail_data = os.listdir(f"{args.input}/{self.file_idx}clips_heatmap_images/")
+                raw_data = json.load(open(f"{args.input}/BDD100k_subtasks_{self.file_idx}labels_heatmap.json"))
+            else:
+                avail_data = os.listdir(f"{args.input}/{self.file_idx}clips_downsampled_6fpv_2sampled/")
+                raw_data = json.load(open(f"{args.input}/BDD100k_subtasks_{self.file_idx}labels_new.json"))                
+        else:
+            raise ValueError(f"Unknown evaluation type: {self.file_idx}")
+
         # Get questions
         self.queries = json.load(open(f"{args.input}/questionSet.json", 'r'))
 
@@ -40,14 +52,45 @@ class Dataset(torch.utils.data.Dataset):
         except:
             logger.debug(f"Error while fetching sample {img_id}.")
             pdb.set_trace()
-
+       
         # Fetch all the variables
-        img_id = img_id + "_frame_" + img_id.split("_")[-1]
+        img_id = img_id
         boxes = self._fetch_boxes(img_data)
         features = torch.tensor(img_data['features'], dtype=torch.float32)
         obj_num = img_data['num_boxes']
         objects = img_data['objects']
-        sent, label = self._fetch_question_answer_pair(idx)
+        
+        random.seed(args.seed)
+        ques_types = list(self.queries.keys())
+        avail_ques_idx = (0, 2, 4)  # 0: red lights; 2: green lights; 4: road signs
+
+        if self.file_idx == "train" or self.file_idx == "val":
+            ques_idx = random.choice(avail_ques_idx)
+            # Append possibility of the Counter question types: 1, 3, 5 
+            ques_appendix = random.choice((0, 1))
+            sent = random.choice(self.queries[ques_types[ques_idx + ques_appendix]])
+            label = torch.tensor(self.idx2label[idx][1][ques_idx + ques_appendix], dtype=torch.float32)  
+        # There are two datasets for testing, normal dataset is just for testing, another one is for heatmap visulization          
+        elif self.file_idx == "test":
+            if args.save_heatmap:
+                sent = [] # 3 questions for heatmap testset
+                label = []
+                for ques_idx in avail_ques_idx:
+                # Append possibility of the Counter question types: 1, 3, 5 
+                    ques_appendix = random.choice((0, 1))
+                    sent_content = random.choice(self.queries[ques_types[ques_idx + ques_appendix]])
+                    sent.append(sent_content)
+                    label = np.append(label, self.idx2label[idx][1][ques_idx + ques_appendix])
+                    
+                label = torch.tensor(label, dtype=torch.float32)
+            else:
+                ques_idx = random.choice(avail_ques_idx)
+                # Append possibility of the Counter question types: 1, 3, 5 
+                ques_appendix = random.choice((0, 1))
+                sent = random.choice(self.queries[ques_types[ques_idx + ques_appendix]])
+                label = torch.tensor(self.idx2label[idx][1][ques_idx + ques_appendix], dtype=torch.float32)     
+        else:
+            raise ValueError(f"Unknown evaluation type: {self.file_idx}")
 
         assert obj_num == objects.shape[0] == len(boxes) == len(features), f"Size didn't match: obj_num = {obj_num}, objects.shape = {objects.shape}, len(boxes) = {len(boxes)}, len(features) = {len(features)}"
 
@@ -88,29 +131,5 @@ class Dataset(torch.utils.data.Dataset):
         np.testing.assert_array_less(boxes_pre, 1+1e-5, verbose=True)
         np.testing.assert_array_less(-boxes_pre, 0+1e-5, verbose=True)
         return torch.tensor(boxes_pre, dtype=torch.float32)
-        
-    def _fetch_question_answer_pair(self, idx: int) -> Tuple[str, Tensor]:
-        """Fetch the question-answer-pair randomly"""
-
-        random.seed(args.seed)
-        ques_types = list(self.queries.keys())
-        avail_ques_idx = (0, 4, 6)  # 0: red lights; 4: green lights; 6: road signs
-
-        if self.file_idx == 'train' or self.file_idx == 'val':
-            ques_idx = random.choice(avail_ques_idx)
-            ques_appendix = random.choice((0, 1))
-            sent = random.choice(self.queries[ques_types[ques_idx + ques_appendix]])
-            label = torch.tensor(self.idx2label[idx][1][ques_idx + ques_appendix], dtype=torch.float32)
-            return sent, label
-
-        elif self.file_idx == 'test':
-            """for i in avail_ques_idx:
-                sents.append(random.choice(self.queries[ques_types[i]]))
-                # ! sents.append(random.choice(self.queries[ques_types[i + 1]])) # Counter-question"""
-            pass
-            return
-
-        else:
-            raise ValueError(f"Unknown evaluation type: {self.file_idx}")
 
 

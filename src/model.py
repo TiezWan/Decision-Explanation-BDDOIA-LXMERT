@@ -1,5 +1,6 @@
 import torch, logging
 import torch.nn as nn
+import numpy as np
 from src.utils.param import args
 from src.lxrt_base.entry import LXRTEncoder
 import src.lxrt_base.modeling as modeling
@@ -16,7 +17,7 @@ class ModLXRT(nn.Module):
     def __init__(self) -> None:
         
         super().__init__()
-        
+        self.attention_scores = None
         if args.baseline:
             # Using orginal LXMERT model
             self.lxrt_encoder = LXRTEncoder(args, max_seq_length=QUERY_LENGTH + 2, mode='x')
@@ -41,9 +42,9 @@ class ModLXRT(nn.Module):
                 mod_modeling.BertLayerNorm(self.hid_dim * 2, eps=1e-12),
                 nn.Linear(self.hid_dim * 2, LOGIT_ANSWER_LENGTH)
             )
+        self.attention_scores = self.lxrt_encoder.attention_scores
 
     def forward(self, imgid, feat, pos, sent):
-
         output = self.lxrt_encoder(imgid, sent, (feat, pos))
         return self.logit_fc(output)
     
@@ -61,7 +62,6 @@ class ModLXRT(nn.Module):
 
         elif args.load_lxmert:
             # Load pre-trained weights given by LXMERT
-
             logger.info(f"Load pre-trained weights of LXMERT from {args.load_lxmert}.")
             self.lxrt_encoder.load(args.load_lxmert)
             logger.info(f"Weights from {args.load_lxmert} loaded.")
