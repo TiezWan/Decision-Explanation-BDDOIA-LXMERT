@@ -7,7 +7,8 @@ import warnings
 import logging
 import pdb
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = "2"
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
 # Attempts to ignore deprecated warnings from Pytorch, as those haven't been fixed in this torch version
@@ -19,8 +20,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     # Train and validation datasets
     assert not (args.train and args.test), "Perform either training or testing."
-    assert not (
-        not args.train and not args.test), "Perform either training or testing."
+    assert not (not args.train and not args.test), "Perform either training or testing."
 
     if args.train:
         training_set = Dataset("train")
