@@ -41,7 +41,7 @@ class HeatmapVisualization:
 
     # according to attention scores to marked the interest objects 
     def compute_objs(self,imgid: str, batch_attention_scores: Tensor, sent: str, ques_nr: int, cluster_lenth: int, eps_dbscan: float, plot=True,) -> List:
-        # Check pytoch source code as a ref to write docstring
+        # ToDo: Check pytoch source code as a ref to write docstring
         # attention_scores: pytorch [12, 15, 100]
         # eps_dbscan: clustering parameters
         # cluster_lenth:If the cluster of highest value objects has a length bigger than this, plot nothing
