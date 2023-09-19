@@ -274,7 +274,7 @@ class AOptimizer(DataLoader):
                 "training_accuracy": label_acc * 100,
                 "training_bitwise_accuracy": bitwise_acc * 100,
                 "training_loss": avg_loss,
-                "training_f1_score": f1_score,
+                "training_f1_score": f1_score * 100,
                 "training_confusion_matrix": conf_mat,
                 "training_trace": trace,
                 "training_image_question_pair": img_sents_pair,
@@ -340,7 +340,7 @@ class AOptimizer(DataLoader):
                 self.model.to(device)
                 if args.multi_GPU:
                     self.model.lxrt_encoder.multi_gpu()
-                self._epoch_checkpoint_save(epoch + 1, "test_heatmap")
+                self._epoch_checkpoint_save(epoch + 1, "heatmap")
                 conf_mat, f1_score, precision, recall = self.eval("test")
                 # Document the evaluation result
                 content = {
@@ -350,7 +350,7 @@ class AOptimizer(DataLoader):
                     "heatmap_visualization_f1_score": f1_score * 100,
                     "heatmap_visualization_matrix": conf_mat,
                 }
-                Document.docu_eval_hist(
+                Document.docu_test_set(
                     content=content, file_name="heatmap_visualization_hist"
                 )
             else:
@@ -381,7 +381,7 @@ class AOptimizer(DataLoader):
                     "testing_trace": trace,
                     "testing_image_question_pair": img_sents_pair,
                 }
-                Document.docu_eval_hist(content=content, file_name="test_hist")
+                Document.docu_test_set(content=content, file_name="test_hist")
 
     def eval(self, get_eval_type: str) -> Tuple:
         """Evaluate the training, validation and test sets"""
