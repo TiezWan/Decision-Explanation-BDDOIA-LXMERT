@@ -17,36 +17,28 @@ class Dataset(torch.utils.data.Dataset):
 
         # Get raw data
         if self.file_idx == "train" or self.file_idx == "val":
-            avail_data = os.listdir(
-                f"{args.input}/{self.file_idx}clips_downsampled_6fpv_2sampled/"
-            )
+            avail_data = os.listdir(f"{args.input}/bdd100k_image/{self.file_idx}")
             raw_data = json.load(
-                open(f"{args.input}/BDD100k_subtasks_{self.file_idx}labels_new.json")
+                open(f"{args.input}/annotation/{self.file_idx}labels.json")
             )
         elif self.file_idx == "test":
             if args.save_heatmap:
                 avail_data = os.listdir(
-                    f"{args.input}/{self.file_idx}clips_heatmap_images/"
+                    f"{args.input}/bdd100k_image/{self.file_idx}_heatmap"
                 )
                 raw_data = json.load(
-                    open(
-                        f"{args.input}/BDD100k_subtasks_{self.file_idx}labels_heatmap.json"
-                    )
+                    open(f"{args.input}/annotation/{self.file_idx}labels_heatmap.json")
                 )
             else:
-                avail_data = os.listdir(
-                    f"{args.input}/{self.file_idx}clips_downsampled_6fpv_2sampled/"
-                )
+                avail_data = os.listdir(f"{args.input}/bdd100k_image/{self.file_idx}")
                 raw_data = json.load(
-                    open(
-                        f"{args.input}/BDD100k_subtasks_{self.file_idx}labels_new.json"
-                    )
+                    open(f"{args.input}/annotation/{self.file_idx}labels.json")
                 )
         else:
             raise ValueError(f"Unknown evaluation type: {self.file_idx}")
 
         # Get questions
-        self.queries = json.load(open(f"{args.input}/questionSet.json", "r"))
+        self.queries = json.load(open(f"{args.input}/annotation/questionset.json", "r"))
 
         self._preprocess_data(raw_data)
         self._check_samples_num(len(avail_data))
@@ -67,7 +59,7 @@ class Dataset(torch.utils.data.Dataset):
         try:
             img_id = self.idx2label[idx][0]
             img_data = np.load(
-                f"{args.input}/feature_output/{self.file_idx}clips_downsampled_6fpv_2sampled/{img_id}.npy",
+                f"{args.input}/extracted_features/{self.file_idx}/{img_id}.npy",
                 allow_pickle=True,
             )[0]
         except:

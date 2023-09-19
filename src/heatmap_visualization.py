@@ -32,10 +32,8 @@ class HeatmapVisualization:
         self.pooling = pooling
         self.img_save_path = img_save_path
         self.input_path = input_path
-        self.orig_frame_path = os.path.join(input_path, "testclips_heatmap_images")
-        self.feature_path = os.path.join(
-            input_path, "feature_output", "testclips_downsampled_6fpv_2sampled"
-        )
+        self.orig_frame_path = os.path.join(input_path, "test_heatmap")
+        self.feature_path = os.path.join(input_path, "extracted_features", "test")
         self.heatmap_labels = heatmap_labels
 
     # load one of labeled 3 types features: redlights, greenlights, and road signs of each image
@@ -45,7 +43,7 @@ class HeatmapVisualization:
         one_of_labels = {}
         # each type label is saved in a json file
         path = self.heatmap_labels[ques_nr]
-        file_path = f"{self.input_path}/{path}"
+        file_path = f"{self.input_path}/annotation/{path}"
         with open(file_path, "r") as f:
             labels = json.load(f)
         for key in labels:
