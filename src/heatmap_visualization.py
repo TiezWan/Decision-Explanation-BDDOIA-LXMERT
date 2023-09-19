@@ -197,7 +197,6 @@ class HeatmapVisualization:
         bbox_source = [
             value if i in roi_idx else 0 for i, value in enumerate(np_source)
         ]
-        # print("original image path", img_path)
         img1 = ax1.imshow(imgplot, cmap="jet", aspect="auto")
         for i in roi_idx:
             bbox = bboxes[i]
