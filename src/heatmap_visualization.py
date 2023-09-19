@@ -5,7 +5,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.image as mpimg
-from typing import List, Tuple, Union, Dict
+from typing import List, Tuple, Dict
 import os
 import json
 from sklearn.cluster import DBSCAN
@@ -32,7 +32,7 @@ class HeatmapVisualization:
         self.pooling = pooling
         self.img_save_path = img_save_path
         self.input_path = input_path
-        self.orig_frame_path = os.path.join(input_path, "test_heatmap")
+        self.orig_frame_path = os.path.join(input_path, "bdd100k_image", "test_heatmap")
         self.feature_path = os.path.join(input_path, "extracted_features", "test")
         self.heatmap_labels = heatmap_labels
 
@@ -197,6 +197,7 @@ class HeatmapVisualization:
         bbox_source = [
             value if i in roi_idx else 0 for i, value in enumerate(np_source)
         ]
+        # print("original image path", img_path)
         img1 = ax1.imshow(imgplot, cmap="jet", aspect="auto")
         for i in roi_idx:
             bbox = bboxes[i]

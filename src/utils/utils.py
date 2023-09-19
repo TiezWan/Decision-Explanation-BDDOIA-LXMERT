@@ -4,7 +4,7 @@ from src.utils.param import args
 
 logger = logging.getLogger(__name__)
 
-class Document():
+class Document():  # ToDo: why and how do we use this class?
     @staticmethod
     def docu_test_set(content: dict, file_name: str='val_acc', mode: str='w', shown=False) -> None:
         """Document results using test set"""

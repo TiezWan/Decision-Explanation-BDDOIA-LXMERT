@@ -8,8 +8,9 @@ import logging
 import pdb
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
+os.environ[
+    "CUDA_VISIBLE_DEVICES"
+] = "2"  # ToDo: extract the ENV.variable outside the codes
 
 # Attempts to ignore deprecated warnings from Pytorch, as those haven't been fixed in this torch version
 warnings.filterwarnings("ignore")
@@ -29,7 +30,7 @@ if __name__ == "__main__":
         test_set = Dataset("test")
 
     # Create model and load fine-tuned weights
-    model = ModLXRT()
+    model = ModLXRT()  # ToDo: do we have a choice for Baseline LXRT?
     model.load_weights()
 
     if args.train:
