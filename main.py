@@ -28,7 +28,7 @@ if __name__ == "__main__":
         test_set = Dataset("test")
 
     # Create model and load fine-tuned weights
-    model = ModLXRT()  # ToDo: do we have a choice for Baseline LXRT?
+    model = ModLXRT()
     model.load_weights()
 
     if args.train:

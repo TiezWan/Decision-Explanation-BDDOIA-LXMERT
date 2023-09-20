@@ -6,7 +6,7 @@ from torch import optim, nn, Tensor
 from torch.utils import data
 from typing import List, Tuple, Union
 
-import src.lxrt_modified.optimization as mod_optimizer
+import src.lxrt.optimization as mod_optimizer
 from src.lxrt_base.modeling import QUERY_LENGTH
 from src.utils.param import args
 from src.utils.utils import Document

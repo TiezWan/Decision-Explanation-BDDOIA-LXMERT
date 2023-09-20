@@ -2,11 +2,10 @@ import torch, logging
 import torch.nn as nn
 import numpy as np
 from src.utils.param import args
-from src.lxrt_base.entry import LXRTEncoder
-import src.lxrt_base.modeling as modeling
-from src.lxrt_base.modeling import QUERY_LENGTH
-from src.lxrt_modified.entry import LXRTEncoder as ModLXRTEncoder
-import src.lxrt_modified.modeling as mod_modeling
+import src.lxrt.modeling_base as modeling
+from src.lxrt.modeling_base import QUERY_LENGTH
+from src.lxrt.entry import LXRTEncoder
+import src.lxrt.modeling_modified as mod_modeling
 
 # Number of output classes
 LOGIT_ANSWER_LENGTH = 1
@@ -34,7 +33,7 @@ class ModLXRT(nn.Module):
             )
         else:
             # Using the modified version
-            self.lxrt_encoder = ModLXRTEncoder(
+            self.lxrt_encoder = LXRTEncoder(
                 args, max_seq_length=QUERY_LENGTH + 2, mode="x"
             )
             self.hid_dim = self.lxrt_encoder.dim
