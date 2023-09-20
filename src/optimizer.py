@@ -17,7 +17,6 @@ torch.autograd.set_detect_anomaly(True)
 
 logger = logging.getLogger(__name__)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("cuda verison:", device)
 
 
 class DataLoader:
@@ -342,6 +341,7 @@ class AOptimizer(DataLoader):
                 if args.multi_GPU:
                     self.model.lxrt_encoder.multi_gpu()
                 self._epoch_checkpoint_save(epoch + 1, "heatmap")
+                logger.info(f"Start evaluating the result of heatmap visualization")
                 conf_mat, f1_score, precision, recall = self.eval("test")
                 # Document the evaluation result
                 content = {
@@ -351,7 +351,7 @@ class AOptimizer(DataLoader):
                     "heatmap_visualization_f1_score": f1_score * 100,
                     "heatmap_visualization_matrix": conf_mat,
                 }
-                Document.docu_test_set(
+                Document.docu_eval_hist(
                     content=content, file_name="heatmap_visualization_hist"
                 )
             else:
@@ -362,6 +362,7 @@ class AOptimizer(DataLoader):
                 if args.multi_GPU:
                     self.model.lxrt_encoder.multi_gpu()
                 self._epoch_checkpoint_save(epoch + 1, "test")
+                logger.info(f"Start evaluating the result of test")
                 (
                     avg_loss,
                     conf_mat,
@@ -382,7 +383,7 @@ class AOptimizer(DataLoader):
                     "testing_trace": trace,
                     "testing_image_question_pair": img_sents_pair,
                 }
-                Document.docu_test_set(content=content, file_name="test_hist")
+                Document.docu_eval_hist(content=content, file_name="test_hist")
 
     def eval(self, get_eval_type: str) -> Tuple:
         """Evaluate the training, validation and test sets"""
@@ -461,13 +462,12 @@ class AOptimizer(DataLoader):
         correctly_answered_ques = 0  # Number of questions that are correctly answered
         trace = np.zeros(
             len(pre_answ[0])
-        )  # Trace whether the questions in different types can be correctly answered (for testing)
+        )  # Trace whether the questions in different types can be correctly answered
 
         for i in range(len(pre_answ)):
             correct_answ = True
             for ques_idx in range(len(pre_answ[i])):
-                # For test dataset, one image will be asked several questions
-                # In other cases, one image will only be asked one question
+                # one image will only be asked one question
                 if (
                     pre_answ[i][ques_idx] >= true_answ[i][ques_idx] - self.tolerance
                     and pre_answ[i][ques_idx] < true_answ[i][ques_idx] + self.tolerance

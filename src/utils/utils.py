@@ -5,49 +5,9 @@ from src.utils.param import args
 logger = logging.getLogger(__name__)
 
 
-class Document:  # ToDo: why and how do we use this class?
+class Document:
     @staticmethod
-    def docu_test_set(
-        content: dict, file_name: str, mode: str = "w", shown=False
-    ) -> None:
-        """Document the test result"""
-
-        with open(
-            f"{args.output}/logs/{file_name}_epoch_{content['epoch']}.log", mode
-        ) as f:
-            f.write(f"Pre-trained weights: \t")
-            if args.load:
-                f.write(args.load)
-            elif args.load_lxmert:
-                f.write(args.load_lxmert)
-            else:
-                f.write(f"From scratch")
-
-            f.write("\n")
-            f.write(f"Validation set:")
-            f.write("\n")
-
-            for key in content.keys():
-                f.write(f"{key.replace('_', ' ').title()}: \t{str(content[key])}")
-                f.write("\n")
-            f.write("\n")
-            f.flush()
-
-        if shown:
-            from_scratch = "From scratch"
-            text = f"Pre-trained weights: \t{args.load if args.load else (args.load_lxmert if args.load_lxmert else from_scratch)}."
-            text += f"\nValidation set:\n"
-            for key in content.keys():
-                text += f"{key.replace('_', ' ').title()}: \t{str(content[key])}"
-                text += "\n"
-            text += "\n"
-
-            logger.info(text)
-
-    @staticmethod
-    def docu_eval_hist(
-        content: dict, file_name: str, mode: str = "w", shown=False
-    ) -> None:
+    def docu_eval_hist(content: dict, file_name: str, mode: str = "w") -> None:
         """Document the evaluation result"""
 
         with open(
@@ -59,23 +19,11 @@ class Document:  # ToDo: why and how do we use this class?
             f.write("\n")
             f.flush()
 
-        if shown:
-            text = ""
-            for key in content.keys():
-                text += f"{key.replace('_', ' ').title()}: \t{str(content[key])}"
-                text += "\n"
-            text += "\n"
-
-            logger.info(text)
-
     @staticmethod
     def docu_training_loss_hist(
-        content: dict,
-        file_name: str = "training_loss_hist",
-        mode: str = "w",
-        shown=False,
+        content: dict, file_name: str = "training_loss_hist", mode: str = "w"
     ) -> None:
-        """Document the loss history"""
+        """Document the loss history during training"""
 
         with open(
             f"{args.output}/logs/{file_name}_epoch_{content['epoch']}.log", mode
@@ -87,11 +35,3 @@ class Document:  # ToDo: why and how do we use this class?
                 f.write(f"\t\t{str(content['loss'][i])}\n")
             f.write("\n")
             f.flush()
-
-        if shown:
-            text = f"Loss in epoch: \t{str(content['epoch'])}"
-            text += f"\n"
-            text += f"Loss: \t{str(content['loss'])}"
-            text += f"\n \n"
-
-            logger.info(text)
