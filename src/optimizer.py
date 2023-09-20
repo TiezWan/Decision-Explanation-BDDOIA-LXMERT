@@ -16,7 +16,8 @@ from src.heatmap_visualization import HeatmapVisualization
 torch.autograd.set_detect_anomaly(True)
 
 logger = logging.getLogger(__name__)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("cuda verison:", device)
 
 
 class DataLoader:

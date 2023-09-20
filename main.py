@@ -8,9 +8,7 @@ import logging
 import pdb
 import os
 
-os.environ[
-    "CUDA_VISIBLE_DEVICES"
-] = "2"  # ToDo: extract the ENV.variable outside the codes
+os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda_device
 
 # Attempts to ignore deprecated warnings from Pytorch, as those haven't been fixed in this torch version
 warnings.filterwarnings("ignore")

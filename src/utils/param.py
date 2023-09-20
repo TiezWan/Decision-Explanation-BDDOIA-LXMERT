@@ -44,7 +44,8 @@ def parse_args():
     parser.add_argument(
         "--savePredictions", dest="save_predictions", action="store_true"
     )
-    # Debugging
+
+    # Relative paths
     parser.add_argument("--output", type=str, default="./output")
     parser.add_argument("--input", type=str, default="./input")
     parser.add_argument(
@@ -59,6 +60,9 @@ def parse_args():
             "roadsigns.json",
         ],
     )
+
+    # Enviroment variable cuda devices
+    parser.add_argument("--cuda", dest="cuda_device", type=str, default="2")
 
     # ? parser.add_argument("--fast", action='store_const', default=False, const=True)
     # ? parser.add_argument("--tiny", action='store_const', default=False, const=True)
