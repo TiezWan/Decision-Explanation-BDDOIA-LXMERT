@@ -16,13 +16,21 @@
 # limitations under the License.
 
 import os
-
 import torch
-import pdb
 import torch.nn as nn
+from src.lxrt.tokenization import BertTokenizer
+from src.utils.param import args
 
-from .tokenization import BertTokenizer
-from .modeling import LXRTFeatureExtraction as VisualBertForLXRFeature, VISUAL_CONFIG, BertConfig
+if args.baseline:
+    from .modeling_base import (
+        LXRTFeatureExtraction as VisualBertForLXRFeature,
+        VISUAL_CONFIG,
+    )
+else:
+    from .modeling_modified import (
+        LXRTFeatureExtraction as VisualBertForLXRFeature,
+        VISUAL_CONFIG,
+    )
 
 
 class InputFeatures(object):
@@ -36,14 +44,15 @@ class InputFeatures(object):
 
 def convert_sents_to_features(sents, max_seq_length, tokenizer):
     """Loads a data file into a list of `InputBatch`s."""
+
     features = []
-    for (i, sent) in enumerate(sents):
+    for i, sent in enumerate(sents):
         tokens_a = tokenizer.tokenize(sent.strip())
 
         # Account for [CLS] and [SEP] with "- 2"
         if len(tokens_a) > max_seq_length - 2:
-            tokens_a = tokens_a[:(max_seq_length - 2)]
-        
+            tokens_a = tokens_a[: (max_seq_length - 2)]
+
         # Keep segment id which allows loading BERT-weights.
         tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
         segment_ids = [0] * len(tokens)
@@ -65,9 +74,10 @@ def convert_sents_to_features(sents, max_seq_length, tokenizer):
         assert len(segment_ids) == max_seq_length
 
         features.append(
-                InputFeatures(input_ids=input_ids,
-                              input_mask=input_mask,
-                              segment_ids=segment_ids))
+            InputFeatures(
+                input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids
+            )
+        )
     return features
 
 
@@ -78,22 +88,20 @@ def set_visual_config(args):
 
 
 class LXRTEncoder(nn.Module):
-    def __init__(self, args, max_seq_length, mode='x'):
+    def __init__(self, args, max_seq_length, mode="x"):
         super().__init__()
-        self.nbheads=args.heads
+        self.nbheads = args.heads
         self.max_seq_length = max_seq_length
         set_visual_config(args)
-
+        self.attention_scores = None
         # Using the bert tokenizer
         self.tokenizer = BertTokenizer.from_pretrained(
-            "bert-base-uncased",
-            do_lower_case=True
+            "bert-base-uncased", do_lower_case=True
         )
 
         # Build LXRT Model
-        self.model = VisualBertForLXRFeature.from_pretrained(args,
-            "bert-base-uncased",
-            mode=mode
+        self.model = VisualBertForLXRFeature.from_pretrained(
+            args, "bert-base-uncased", mode=mode
         )
 
         if args.from_scratch:
@@ -105,24 +113,37 @@ class LXRTEncoder(nn.Module):
 
     @property
     def dim(self):
-        return 64*self.nbheads
+        return 64 * self.nbheads
 
     def forward(self, imgid, sents, feats, visual_attention_mask=None):
         train_features = convert_sents_to_features(
-            sents, self.max_seq_length, self.tokenizer)
-        
-        input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long).cuda()
-        input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long).cuda()
-        segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long).cuda()
+            sents, self.max_seq_length, self.tokenizer
+        )
 
-        output = self.model(imgid, input_ids, sents, segment_ids, input_mask,
-                            visual_feats=feats, #feats=(feats,boxes) from DecExp
-                            visual_attention_mask=visual_attention_mask)
+        input_ids = torch.tensor(
+            [f.input_ids for f in train_features], dtype=torch.long
+        ).cuda()
+        input_mask = torch.tensor(
+            [f.input_mask for f in train_features], dtype=torch.long
+        ).cuda()
+        segment_ids = torch.tensor(
+            [f.segment_ids for f in train_features], dtype=torch.long
+        ).cuda()
+
+        output = self.model(
+            imgid,
+            input_ids,
+            sents,
+            segment_ids,
+            input_mask,
+            visual_feats=feats,  # feats=(feats,boxes) from DecExp
+            visual_attention_mask=visual_attention_mask,
+        )
+        self.attention_scores = self.model.attention_scores
         return output
 
     def save(self, path):
-        torch.save(self.model.state_dict(),
-                   os.path.join("%s_LXRT.pth" % path))
+        torch.save(self.model.state_dict(), os.path.join("%s_LXRT.pth" % path))
 
     def load(self, path):
         # Load state_dict from snapshot file
@@ -152,7 +173,3 @@ class LXRTEncoder(nn.Module):
         # Load weights to model
         self.model.load_state_dict(state_dict, strict=False)
         print("Pretrain weights successfully loaded")
-
-
-
-
