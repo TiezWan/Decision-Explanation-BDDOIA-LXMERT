@@ -1,4 +1,6 @@
-import argparse, random, torch
+import argparse
+import random
+import torch
 import numpy as np
 
 

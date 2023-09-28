@@ -96,7 +96,7 @@ class HeatmapVisualization:
             )  # CLS is the first row of matrix
         elif self.pooling == "sum":
             np_source = np.sum(
-                normal_source[1 : (num_words + 1), :], 0
+                normal_source[1:(num_words + 1), :], 0
             )  # Average the rows of matrix
             max_value = np.amax(np_source)
             np_source /= max_value  # Normalizing
@@ -119,7 +119,7 @@ class HeatmapVisualization:
         ]
         if len(interestobjs) > cluster_lenth:
             interestobjs = []
-        if bboxcaplength != None:
+        if bboxcaplength is not None:
             if len(interestobjs) > bboxcaplength:
                 interestobjs = np.flip(np.argsort(np_source_ex1, 0))[:, 0][
                     :bboxcaplength
@@ -193,11 +193,11 @@ class HeatmapVisualization:
 
         # obtain bounding boxes
         bboxes = features["bbox"]
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        _, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
         bbox_source = [
             value if i in roi_idx else 0 for i, value in enumerate(np_source)
         ]
-        img1 = ax1.imshow(imgplot, cmap="jet", aspect="auto")
+        ax1.imshow(imgplot, cmap="jet", aspect="auto")
         for i in roi_idx:
             bbox = bboxes[i]
             rect = patches.Rectangle(
@@ -232,7 +232,7 @@ class HeatmapVisualization:
     def plot_heatmap(self, imgid, source, ques_nr: int) -> None:
         """plot heatmap of attention scores"""
 
-        fig, ax = plt.subplots(figsize=(16, 10))
+        _, ax = plt.subplots(figsize=(16, 10))
         img = ax.imshow(source, cmap="jet")
         x_label = np.arange(0, 100, 10)
         y_label = np.arange(0, 15, 5)
@@ -242,7 +242,7 @@ class HeatmapVisualization:
         ax.set_yticklabels(y_label)
         ax.set_xlabel("Objects")
         ax.set_ylabel("Words")
-        bar = plt.colorbar(img, ax=ax, shrink=0.2, pad=0.02)
+        plt.colorbar(img, ax=ax, shrink=0.2, pad=0.02)
         plt.savefig(f"{self.img_save_path}/{imgid}_sent{ques_nr}_heatmap.jpg")
         # plt.show()
 

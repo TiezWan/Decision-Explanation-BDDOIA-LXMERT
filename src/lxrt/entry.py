@@ -18,7 +18,7 @@
 import os
 import torch
 import torch.nn as nn
-from .tokenization import BertTokenizer
+from src.lxrt.tokenization import BertTokenizer
 from src.utils.param import args
 
 if args.baseline:
@@ -152,7 +152,7 @@ class LXRTEncoder(nn.Module):
         new_state_dict = {}
         for key, value in state_dict.items():
             if key.startswith("module."):
-                new_state_dict[key[len("module.") :]] = value
+                new_state_dict[key[len("module."):]] = value
             else:
                 new_state_dict[key] = value
         state_dict = new_state_dict

@@ -1,4 +1,6 @@
-import os, logging, pdb
+import os
+import logging
+import pdb
 from tqdm import tqdm
 import numpy as np
 import torch
@@ -7,7 +9,7 @@ from torch.utils import data
 from typing import List, Tuple, Union
 
 import src.lxrt.optimization as mod_optimizer
-from src.lxrt_base.modeling import QUERY_LENGTH
+from src.lxrt.modeling_base import QUERY_LENGTH
 from src.utils.param import args
 from src.utils.utils import Document
 from src.model import ModLXRT
@@ -96,9 +98,7 @@ class AOptimizer(DataLoader):
             self.optim.step()
 
         elif (
-            get_eval_type == "eval_train"
-            or get_eval_type == "val"
-            or get_eval_type == "test"
+            get_eval_type == "eval_train" or get_eval_type == "val" or get_eval_type == "test"
         ):
             pass
 
@@ -116,7 +116,7 @@ class AOptimizer(DataLoader):
 
         for batch_idx, batch in enumerate(progress_bar):
             # Bring the data to GUP
-            idx = batch[0]
+            # idx = batch[0]
             img_id = batch[1]
             boxes = batch[2].to(device)
             features = batch[3].to(device)
@@ -242,7 +242,7 @@ class AOptimizer(DataLoader):
             logger.info(f"Epoch: \t{epoch+1}/{self.epochs}")
 
             # Start training
-            logger.info(f"Start training")
+            logger.info("Start training")
             self.model.train()
             self.model.to(device)
             if args.multi_GPU:
@@ -258,7 +258,7 @@ class AOptimizer(DataLoader):
             self._epoch_checkpoint_save(epoch + 1, "train")
 
             # Evaluate training
-            logger.info(f"Start evaluating training")
+            logger.info("Start evaluating training")
             (
                 avg_loss,
                 conf_mat,
@@ -282,7 +282,7 @@ class AOptimizer(DataLoader):
             Document.docu_eval_hist(content=content, file_name="training_hist")
 
             # Start validation
-            logger.info(f"Start validation")
+            logger.info("Start validation")
             (
                 avg_loss,
                 conf_mat,
@@ -335,13 +335,13 @@ class AOptimizer(DataLoader):
 
             if args.save_heatmap:
                 # Start heatmap visualization
-                logger.info(f"Start heatmap visualization")
+                logger.info("Start heatmap visualization")
                 self.model.eval()
                 self.model.to(device)
                 if args.multi_GPU:
                     self.model.lxrt_encoder.multi_gpu()
                 self._epoch_checkpoint_save(epoch + 1, "heatmap")
-                logger.info(f"Start evaluating the result of heatmap visualization")
+                logger.info("Start evaluating the result of heatmap visualization")
                 conf_mat, f1_score, precision, recall = self.eval("test")
                 # Document the evaluation result
                 content = {
@@ -356,13 +356,13 @@ class AOptimizer(DataLoader):
                 )
             else:
                 # Start testing
-                logger.info(f"Start testing")
+                logger.info("Start testing")
                 self.model.eval()
                 self.model.to(device)
                 if args.multi_GPU:
                     self.model.lxrt_encoder.multi_gpu()
                 self._epoch_checkpoint_save(epoch + 1, "test")
-                logger.info(f"Start evaluating the result of test")
+                logger.info("Start evaluating the result of test")
                 (
                     avg_loss,
                     conf_mat,
@@ -469,8 +469,7 @@ class AOptimizer(DataLoader):
             for ques_idx in range(len(pre_answ[i])):
                 # one image will only be asked one question
                 if (
-                    pre_answ[i][ques_idx] >= true_answ[i][ques_idx] - self.tolerance
-                    and pre_answ[i][ques_idx] < true_answ[i][ques_idx] + self.tolerance
+                    pre_answ[i][ques_idx] >= true_answ[i][ques_idx] - self.tolerance and pre_answ[i][ques_idx] < true_answ[i][ques_idx] + self.tolerance
                 ):
                     correctly_answered_ques += 1
                 else:
@@ -490,7 +489,7 @@ class AOptimizer(DataLoader):
 
         try:
             return conf_mat[3] / (conf_mat[3] + 0.5 * (conf_mat[1] + conf_mat[2]))
-        except:
+        except ZeroDivisionError:
             pdb.set_trace()
             return 999.0
 
@@ -504,7 +503,7 @@ class AOptimizer(DataLoader):
             precision = conf_mat[3] / (conf_mat[3] + conf_mat[1])
             recall = conf_mat[3] / (conf_mat[3] + conf_mat[2])
             f1 = conf_mat[3] / (conf_mat[3] + 0.5 * (conf_mat[1] + conf_mat[2]))
-        except:
+        except ZeroDivisionError:
             pdb.set_trace()
 
         return f1, precision, recall
@@ -526,7 +525,7 @@ class Optimizer(AOptimizer):
             dataset_list, dataloader_setup, 5, 0.5, model, optimizer, criterion
         )
 
-        text = f"Initializing an optimizer:\n"
+        text = "Initializing an optimizer:\n"
         text += f"Optimizer: \t{args.optim}\n"
         text += f"Learning Rate: \t{self.lr}\n"
         text += f"Epochs: \t{self.epochs}\n"

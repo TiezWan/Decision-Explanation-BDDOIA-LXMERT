@@ -29,8 +29,7 @@ from io import open
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, SmoothL1Loss
-
-from .file_utils import cached_path
+from src.lxrt.file_utils import cached_path
 
 logger = logging.getLogger(__name__)
 # Number of words in the query, without counting [CLS] and [SEP]
@@ -56,7 +55,7 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
         import re
         import numpy as np
         import tensorflow as tf
-    except Importtokenization:
+    except ImportError:
         print(
             "Loading a TensorFlow models in PyTorch, requires TensorFlow to be installed. Please see "
             "https://www.tensorflow.org/install/ for installation instructions."
@@ -84,19 +83,19 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
         pointer = model
         for m_name in name:
             if re.fullmatch(r"[A-Za-z]+_\d+", m_name):
-                l = re.split(r"_(\d+)", m_name)
+                lang = re.split(r"_(\d+)", m_name)
             else:
-                l = [m_name]
-            if l[0] == "kernel" or l[0] == "gamma":
+                lang = [m_name]
+            if lang[0] == "kernel" or lang[0] == "gamma":
                 pointer = getattr(pointer, "weight")
-            elif l[0] == "output_bias" or l[0] == "beta":
+            elif lang[0] == "output_bias" or lang[0] == "beta":
                 pointer = getattr(pointer, "bias")
-            elif l[0] == "output_weights":
+            elif lang[0] == "output_weights":
                 pointer = getattr(pointer, "weight")
             else:
-                pointer = getattr(pointer, l[0])
-            if len(l) >= 2:
-                num = int(l[1])
+                pointer = getattr(pointer, lang[0])
+            if len(lang) >= 2:
+                num = int(lang[1])
                 pointer = pointer[num]
         if m_name[-11:] == "_embeddings":
             pointer = getattr(pointer, "weight")
@@ -137,76 +136,6 @@ class GeLU(nn.Module):
 
 def swish(x):
     return x * torch.sigmoid(x)
-
-
-"""
-def save_heatmap(batch_tensor, imgids, layer_count, nbheads, stage, mode, sents=[None]):
-    scores_copy=batch_tensor.clone() #creating a copy that will then be sent to cpu, to avoid sending original to cpu
-    scores_copy.cpu()
-    # layer_count is 5
-    print(f"saving {stage}, {mode} for {imgids}, layer {layer_count}")
-    #pdb.set_trace() #Do not remove this breakpoint
-    
-    for img in range(len(imgids)): #For each image in the batch
-        path=".src/heatmap_visualization/heatmap_testset/"+str(imgids[img])+'/'
-        #path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+'/'
-        if not os.path.isdir(path): #check if a folder for the original video name exists
-            os.makedirs(path) #If not we initialize everything
-        os.makedirs(path+'attention_scores/') # make folder to save attention scores 
-
-
-    # Only attentions score from language branch need to be heatmap visualized
-    if stage=='attsc':
-        if mode=="lang":
-            for img in range(len(imgids)): #For each image in the batch
-                path=".src/heatmap_visualization/heatmap_testset/"+str(imgids[img])+'/'
-                if not os.path.exists(f"{path}sents.txt"):
-                    with open(f"{path}sents.txt", 'w') as f:
-                        f.write(sents[img])
-                for head in range(nbheads):
-                    # save each head attention scores from 5th language mode of xlayer
-                    np.save(path+"attention_scores/"+str(imgids[img])+ "_attsc_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-                    #np.save("test.npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-        else:
-            print("Error while saving the heatmap, mode unrecognized. Must be 'lang'. Current: ", mode)
-        '''            
-        elif mode=="visn":
-            for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
-                if not os.path.exists(f"{path}sents.txt"):
-                    with open(f"{path}sents.txt", 'w') as f:
-                        f.write(sents[img])
-                for head in range(nbheads):
-                    np.save(path+'attention_scores/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
-                    "_attsc_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-    
-
-    elif stage=='ctxlay':
-        if mode=='lang':
-            for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
-                if not os.path.exists(f"{path}sents.txt"):
-                    with open(f"{path}sents.txt", 'w') as f:
-                        f.write(sents[img])
-                for head in range(nbheads):
-                    
-                    np.save(path+'context_layer/lang/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
-                    "_ctxlay_layer_"+str(layer_count)+"_lang_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-    
-        elif mode=='visn':
-            for img in range(len(imgids)):
-                path="./subtasks/snap_subtasks/heatmaps/Temp_ModifyName/"+str(imgids[img])+f'/sent{img}/'
-                if not os.path.exists(f"{path}sents.txt"):
-                    with open(f"{path}sents.txt", 'w') as f:
-                        f.write(sents[img])
-                for head in range(nbheads):
-                    np.save(path+'context_layer/visn/layer_'+str(layer_count)+'/'+str(imgids[img])+ \
-                    "_ctxlay_layer_"+str(layer_count)+"_visn_head_"+str(head+1)+".npy", scores_copy.cpu().detach().numpy()[img,head,:,:], allow_pickle=False)
-        '''
-
-    else:
-        print("Error while saving the heatmap, stage unrecognized. Must be 'attsc'. Current: ", stage)
-"""
 
 
 ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
@@ -283,8 +212,7 @@ class BertConfig(object):
                 initializing all weight matrices.
         """
         if isinstance(vocab_size_or_config_json_file, str) or (
-            sys.version_info[0] == 2
-            and isinstance(vocab_size_or_config_json_file, unicode)
+            sys.version_info[0] == 2 and isinstance(vocab_size_or_config_json_file, str)
         ):
             with open(vocab_size_or_config_json_file, "r", encoding="utf-8") as reader:
                 json_config = json.loads(reader.read())
@@ -434,12 +362,9 @@ class BertAttention(nn.Module):
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
 
-        ##saving heatmaps
+        # saving heatmaps
         if (
-            attention_scores.size()
-            == torch.Size([len(sents), self.num_attention_heads, QUERY_LENGTH + 2, 100])
-            and flagcross == 1
-            and self.save_heatmap == True
+            attention_scores.size() == torch.Size([len(sents), self.num_attention_heads, QUERY_LENGTH + 2, 100]) and flagcross == 1 and self.save_heatmap
         ):
             if layer_count == 5:
                 # save_heatmap(attention_scores, imgid, layer_count, self.num_attention_heads, 'attsc', 'lang', sents)
@@ -532,7 +457,7 @@ class BertIntermediate(nn.Module):
         super(BertIntermediate, self).__init__()
         self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
         if isinstance(config.hidden_act, str) or (
-            sys.version_info[0] == 2 and isinstance(config.hidden_act, unicode)
+            sys.version_info[0] == 2 and isinstance(config.hidden_act, str)
         ):
             self.intermediate_act_fn = ACT2FN[config.hidden_act]
         else:
@@ -807,7 +732,7 @@ class BertPredictionHeadTransform(nn.Module):
         super(BertPredictionHeadTransform, self).__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         if isinstance(config.hidden_act, str) or (
-            sys.version_info[0] == 2 and isinstance(config.hidden_act, unicode)
+            sys.version_info[0] == 2 and isinstance(config.hidden_act, str)
         ):
             self.transform_act_fn = ACT2FN[config.hidden_act]
         else:

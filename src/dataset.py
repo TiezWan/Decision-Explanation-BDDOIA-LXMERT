@@ -1,9 +1,12 @@
-import os, json, random, logging, pdb
+import os
+import json
+import random
+import logging
+import pdb
 import numpy as np
 import torch
 import torch.utils.data
 from torch import Tensor
-from typing import Tuple
 
 from src.utils.param import args
 
@@ -62,7 +65,7 @@ class Dataset(torch.utils.data.Dataset):
                 f"{args.input}/extracted_features/{self.file_idx}/{img_id}.npy",
                 allow_pickle=True,
             )[0]
-        except:
+        except FileNotFoundError:
             logger.debug(f"Error while fetching sample {img_id}.")
             pdb.set_trace()
 
@@ -145,7 +148,7 @@ class Dataset(torch.utils.data.Dataset):
             self.idx2label = {
                 idx: self.idx2label[idx] for idx in range(args.samples_num)
             }
-            logger.info(f"The number of samples was limited for debugging.")
+            logger.info("The number of samples was limited for debugging.")
 
     def _fetch_boxes(self, img_data) -> Tensor:
         """Fetch the boxes and normalize it"""

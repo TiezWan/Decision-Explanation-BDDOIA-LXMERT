@@ -1,6 +1,6 @@
-import torch, logging
+import logging
+import torch
 import torch.nn as nn
-import numpy as np
 from src.utils.param import args
 import src.lxrt.modeling_base as modeling
 from src.lxrt.modeling_base import QUERY_LENGTH

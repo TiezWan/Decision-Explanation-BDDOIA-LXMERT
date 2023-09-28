@@ -192,9 +192,7 @@ class BertAdam(Optimizer):
                     lr_scheduled = group["lr"] * schedule_fct(progress, group["warmup"])
                     # warning for exceeding t_total (only active with warmup_linear
                     if (
-                        group["schedule"] == "warmup_linear"
-                        and progress > 1.0
-                        and not warned_for_t_total
+                        group["schedule"] == "warmup_linear" and progress > 1.0 and not warned_for_t_total
                     ):
                         logger.warning(
                             "Training beyond specified 't_total' steps with schedule '{}'. Learning rate set to {}. "

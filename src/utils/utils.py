@@ -1,4 +1,4 @@
-import os, logging
+import logging
 
 from src.utils.param import args
 

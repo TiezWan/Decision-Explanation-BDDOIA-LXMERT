@@ -2,8 +2,9 @@
 others/*
 output/*
 .vscode/*
-src/mmf/*
-src/vqa-maskrcnn-benchmark/*
+input
+src/mmf
+src/vqa-maskrcnn-benchmark
 
 # Byte-compiled / optimized / DLL files
 #__pycache__/
